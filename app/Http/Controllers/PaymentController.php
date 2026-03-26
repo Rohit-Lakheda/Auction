@@ -190,7 +190,6 @@ class PaymentController extends Controller
             'pan_verification_data' => json_encode($request->session()->get('pan_verification_data_' . md5($reg['pan_card_number']), [])),
             'expires_at' => now()->addDay(),
             'created_at' => now(),
-            'updated_at' => now(),
         ]);
         DB::table('registration_payments')->insert([
             'transaction_id' => $transactionId,
