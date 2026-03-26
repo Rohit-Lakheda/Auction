@@ -59,7 +59,7 @@ class RegistrationController extends Controller
 
     public function sendMobileOtp(Request $request)
     {
-        $mobile = preg_replace('/[^0-9]/', '', (string) $request->input('mobile', ''));
+        $mobile = $this->normalizeMobile((string) $request->input('mobile', ''));
         if (strlen($mobile) !== 10) {
             return response()->json(['success' => false, 'message' => 'Mobile number must be 10 digits.']);
         }
@@ -77,7 +77,7 @@ class RegistrationController extends Controller
 
     public function verifyMobileOtp(Request $request)
     {
-        $mobile = preg_replace('/[^0-9]/', '', (string) $request->input('mobile', ''));
+        $mobile = $this->normalizeMobile((string) $request->input('mobile', ''));
         $otp = preg_replace('/[^0-9]/', '', (string) $request->input('otp', ''));
         $storedOtp = (string) $request->session()->get('mobile_otp_' . md5($mobile), '');
         $otpTime = (int) $request->session()->get('mobile_otp_time_' . md5($mobile), 0);
@@ -207,13 +207,19 @@ class RegistrationController extends Controller
         ]);
 
         $email = strtolower($validated['email']);
-        $mobile = $validated['mobile'];
+        $mobileRaw = (string) $validated['mobile'];
+        $mobile = $this->normalizeMobile($mobileRaw);
         $pan = strtoupper($validated['pancardno']);
 
         if (! $request->session()->get('email_verified_' . md5($email), false)) {
             return back()->withErrors(['email' => 'Please verify your email address.'])->withInput();
         }
-        if (! $request->session()->get('mobile_verified_' . md5($mobile), false)) {
+        $isMobileVerified = (bool) $request->session()->get('mobile_verified_' . md5($mobile), false);
+        if (! $isMobileVerified && $mobileRaw !== $mobile) {
+            // Backward-compatible fallback if an older session stored verification on raw input.
+            $isMobileVerified = (bool) $request->session()->get('mobile_verified_' . md5($mobileRaw), false);
+        }
+        if (! $isMobileVerified) {
             return back()->withErrors(['mobile' => 'Please verify your mobile number.'])->withInput();
         }
         if (! $request->session()->get('pan_verified_' . md5($pan), false)) {
@@ -246,15 +252,62 @@ class RegistrationController extends Controller
         return DB::table('registration')->where($column, $value)->exists();
     }
 
+    private function normalizeMobile(string $mobile): string
+    {
+        return preg_replace('/[^0-9]/', '', trim($mobile));
+    }
+
     private function sendOtpEmail(string $email, string $otp): bool
     {
         try {
-            Mail::raw("Your OTP for email verification is: {$otp}", static function ($message) use ($email): void {
+            $this->applyActiveAdminEmailSettingsForOtp();
+            Mail::mailer('smtp')->raw("Your OTP for email verification is: {$otp}", static function ($message) use ($email): void {
                 $message->to($email)->subject('Email Verification OTP');
             });
             return true;
         } catch (\Throwable) {
             return false;
+        }
+    }
+
+    private function applyActiveAdminEmailSettingsForOtp(): void
+    {
+        try {
+            if (! \Illuminate\Support\Facades\Schema::hasTable('email_settings')) {
+                return;
+            }
+
+            $settings = DB::table('email_settings')
+                ->where('is_active', 1)
+                ->latest('updated_at')
+                ->first();
+
+            if (! $settings) {
+                return;
+            }
+
+            $encryption = strtolower(trim((string) ($settings->encryption ?? '')));
+            $smtpScheme = match ($encryption) {
+                'ssl' => 'smtps',
+                'tls', '' => 'smtp',
+                default => 'smtp',
+            };
+
+            config([
+                'mail.default' => 'smtp',
+                'mail.mailers.smtp.host' => (string) ($settings->smtp_host ?? config('mail.mailers.smtp.host')),
+                'mail.mailers.smtp.port' => (int) ($settings->smtp_port ?? config('mail.mailers.smtp.port')),
+                'mail.mailers.smtp.username' => (string) ($settings->smtp_username ?? config('mail.mailers.smtp.username')),
+                'mail.mailers.smtp.password' => (string) ($settings->smtp_password ?? config('mail.mailers.smtp.password')),
+                'mail.mailers.smtp.scheme' => $smtpScheme,
+                'mail.mailers.smtp.timeout' => 10,
+                'mail.from.address' => (string) ($settings->from_email ?? config('mail.from.address')),
+                'mail.from.name' => (string) ($settings->from_name ?? config('mail.from.name')),
+            ]);
+
+            Mail::purge('smtp');
+        } catch (\Throwable) {
+            // Keep default mail config if dynamic DB settings cannot be loaded.
         }
     }
 }
