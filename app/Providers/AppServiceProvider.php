@@ -40,13 +40,20 @@ class AppServiceProvider extends ServiceProvider
                 return;
             }
 
+            $encryption = strtolower(trim((string) ($settings->encryption ?? '')));
+            $smtpScheme = match ($encryption) {
+                'ssl' => 'smtps',
+                'tls', '' => 'smtp',
+                default => (string) config('mail.mailers.smtp.scheme', 'smtp'),
+            };
+
             config([
                 'mail.default' => 'smtp',
                 'mail.mailers.smtp.host' => (string) ($settings->smtp_host ?? config('mail.mailers.smtp.host')),
                 'mail.mailers.smtp.port' => (int) ($settings->smtp_port ?? config('mail.mailers.smtp.port')),
                 'mail.mailers.smtp.username' => (string) ($settings->smtp_username ?? config('mail.mailers.smtp.username')),
                 'mail.mailers.smtp.password' => (string) ($settings->smtp_password ?? config('mail.mailers.smtp.password')),
-                'mail.mailers.smtp.scheme' => (string) ($settings->encryption ?? config('mail.mailers.smtp.scheme')),
+                'mail.mailers.smtp.scheme' => $smtpScheme,
                 'mail.from.address' => (string) ($settings->from_email ?? config('mail.from.address')),
                 'mail.from.name' => (string) ($settings->from_name ?? config('mail.from.name')),
             ]);
