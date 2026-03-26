@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 
 class PaymentController extends Controller
 {
@@ -231,8 +232,9 @@ class PaymentController extends Controller
         $transactionId = (string) ($data['udf3'] ?? '');
         $registrationId = (string) ($data['udf2'] ?? '');
         $amount = (float) ($data['amount'] ?? 0);
+        $welcomeEmailContext = null;
 
-        DB::transaction(function () use ($transactionId, $registrationId, $amount, $data): void {
+        DB::transaction(function () use ($transactionId, $registrationId, $amount, $data, &$welcomeEmailContext): void {
             $pending = DB::table('pending_registrations')
                 ->where('transaction_id', $transactionId)
                 ->where('registration_id', $registrationId)
@@ -286,14 +288,17 @@ class PaymentController extends Controller
             ]);
             DB::table('pending_registrations')->where('transaction_id', $transactionId)->delete();
 
-            $resetUrl = route('password.reset.form', ['token' => $resetToken]);
-            Mail::raw(
-                "Welcome to Auction Portal.\nRegistration ID: {$registrationId}\nEmail: {$pending->email}\nTemporary password: {$tempPassword}\nReset link: {$resetUrl}",
-                static function ($message) use ($pending): void {
-                    $message->to($pending->email)->subject('Registration Successful');
-                }
-            );
+            $welcomeEmailContext = [
+                'email' => (string) $pending->email,
+                'registration_id' => $registrationId,
+                'temp_password' => $tempPassword,
+                'reset_url' => route('password.reset.form', ['token' => $resetToken]),
+            ];
         });
+
+        if (is_array($welcomeEmailContext)) {
+            $this->sendRegistrationSuccessEmail($welcomeEmailContext);
+        }
 
         return redirect()->route('login')->with('status', 'Registration payment successful. Please check email for credentials.');
     }
@@ -354,5 +359,64 @@ class PaymentController extends Controller
         }
 
         return redirect()->route('wallet.index')->with('error', 'wallet_topup_failed');
+    }
+
+    private function sendRegistrationSuccessEmail(array $context): void
+    {
+        try {
+            $this->applyActiveAdminEmailSettings();
+            Mail::mailer('smtp')->raw(
+                "Welcome to Auction Portal.\nRegistration ID: {$context['registration_id']}\nEmail: {$context['email']}\nTemporary password: {$context['temp_password']}\nReset link: {$context['reset_url']}",
+                static function ($message) use ($context): void {
+                    $message->to($context['email'])->subject('Registration Successful');
+                }
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Registration success email failed to send.', [
+                'email' => $context['email'] ?? null,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function applyActiveAdminEmailSettings(): void
+    {
+        try {
+            if (! \Illuminate\Support\Facades\Schema::hasTable('email_settings')) {
+                return;
+            }
+
+            $settings = DB::table('email_settings')
+                ->where('is_active', 1)
+                ->latest('updated_at')
+                ->first();
+
+            if (! $settings) {
+                return;
+            }
+
+            $encryption = strtolower(trim((string) ($settings->encryption ?? '')));
+            $smtpScheme = match ($encryption) {
+                'ssl' => 'smtps',
+                'tls', '' => 'smtp',
+                default => 'smtp',
+            };
+
+            config([
+                'mail.default' => 'smtp',
+                'mail.mailers.smtp.host' => (string) ($settings->smtp_host ?? config('mail.mailers.smtp.host')),
+                'mail.mailers.smtp.port' => (int) ($settings->smtp_port ?? config('mail.mailers.smtp.port')),
+                'mail.mailers.smtp.username' => (string) ($settings->smtp_username ?? config('mail.mailers.smtp.username')),
+                'mail.mailers.smtp.password' => (string) ($settings->smtp_password ?? config('mail.mailers.smtp.password')),
+                'mail.mailers.smtp.scheme' => $smtpScheme,
+                'mail.mailers.smtp.timeout' => 10,
+                'mail.from.address' => (string) ($settings->from_email ?? config('mail.from.address')),
+                'mail.from.name' => (string) ($settings->from_name ?? config('mail.from.name')),
+            ]);
+
+            Mail::purge('smtp');
+        } catch (\Throwable) {
+            // Keep default mail configuration if dynamic settings are unavailable.
+        }
     }
 }

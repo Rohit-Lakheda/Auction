@@ -5,6 +5,7 @@
 <div class="logo-header"><img src="{{ asset('images/nixi_logo1.jpg') }}" alt="NIXI Logo"><h1>Auction Portal</h1></div>
 <div class="container">
     <h2>Login</h2>
+    @if(session('status'))<div style="background:#e8f5e9;color:#1b5e20;padding:12px;border-radius:8px;margin-bottom:14px;">{{ session('status') }}</div>@endif
     @if($errors->any())<div style="background:#ffebee;color:#c62828;padding:12px;border-radius:8px;margin-bottom:14px;">{{ $errors->first() }}</div>@endif
     <form method="POST" action="{{ route('login.submit') }}">@csrf
         <div class="form-group"><label>Email</label><input type="email" name="email" required value="{{ old('email') }}"></div>
