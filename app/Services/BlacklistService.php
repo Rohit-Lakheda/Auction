@@ -20,17 +20,28 @@ class BlacklistService
                 $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
             });
 
-        $hasAny = false;
+        $matchers = [];
         foreach (['user_id', 'email', 'mobile', 'pan_card_number', 'device_fingerprint', 'ip_address'] as $key) {
             $value = $identity[$key] ?? null;
             if ($value === null || $value === '') {
                 continue;
             }
-            $hasAny = true;
-            $query->orWhere($key, $value);
+            $matchers[$key] = $key === 'email'
+                ? strtolower(trim((string) $value))
+                : $value;
         }
 
-        return $hasAny ? $query->exists() : false;
+        if ($matchers === []) {
+            return false;
+        }
+
+        $query->where(function ($q) use ($matchers): void {
+            foreach ($matchers as $key => $value) {
+                $q->orWhere($key, $value);
+            }
+        });
+
+        return $query->exists();
     }
 
     public function blacklistIdentity(array $identity, string $reason): void
