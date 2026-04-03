@@ -61,10 +61,10 @@ class UserDashboardController extends Controller
                         ->where('ap.user_id', '=', $userId)
                         ->where('ap.emd_locked', '=', 1);
                 })
-                ->selectRaw("a.id, a.title, a.status, a.end_datetime, a.emd_amount, (SELECT MAX(amount) FROM bids WHERE auction_id = a.id) as current_bid, COUNT(ap.id) as joined_count")
+                ->selectRaw("a.id, a.title, a.status, a.end_datetime, a.emd_amount, (SELECT MAX(amount) FROM bids WHERE auction_id = a.id) as current_bid, COUNT(ap.id) as joined_count, MAX(w.created_at) as watchlisted_at")
                 ->where('w.user_id', $userId)
                 ->groupBy('a.id', 'a.title', 'a.status', 'a.end_datetime', 'a.emd_amount')
-                ->orderByDesc('w.created_at')
+                ->orderByDesc('watchlisted_at')
                 ->limit(6)
                 ->get();
         }
