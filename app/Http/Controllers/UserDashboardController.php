@@ -11,15 +11,31 @@ class UserDashboardController extends Controller
     public function index(Request $request)
     {
         $userId = (int) $request->session()->get('user_id');
+        $now = now();
 
         $stats = [
             'total_bids' => DB::table('bids')->where('user_id', $userId)->count(),
-            'won_auctions' => DB::table('auctions')->where('winner_user_id', $userId)->where('status', 'closed')->count(),
-            'active_bidding' => DB::selectOne(
-                "SELECT COUNT(DISTINCT auction_id) as total FROM bids b JOIN auctions a ON b.auction_id = a.id WHERE b.user_id = ? AND a.status = 'active'",
-                [$userId]
-            )->total ?? 0,
+            'won_auctions' => DB::table('auctions')->where('winner_user_id', $userId)->whereIn('status', ['closed', 'completed'])->count(),
+            'active_bidding' => (int) DB::table('auctions as a')
+                ->where('a.status', 'active')
+                ->where('a.end_datetime', '>', $now)
+                ->whereExists(function ($q) use ($userId): void {
+                    $q->select(DB::raw(1))
+                        ->from('bids as b')
+                        ->whereColumn('b.auction_id', 'a.id')
+                        ->where('b.user_id', $userId);
+                })
+                ->count(),
         ];
+
+        $watchlistTotal = 0;
+        if (Schema::hasTable('watchlists')) {
+            $watchlistTotal = (int) DB::table('watchlists as w')
+                ->join('auctions as a', 'a.id', '=', 'w.auction_id')
+                ->where('w.user_id', $userId)
+                ->where('a.status', 'active')
+                ->count();
+        }
 
         $winningBids = collect(DB::select(
             "SELECT a.id, a.title, a.end_datetime, b.amount as my_bid,
@@ -69,6 +85,6 @@ class UserDashboardController extends Controller
                 ->get();
         }
 
-        return view('user.dashboard', compact('stats', 'winningBids', 'recentBids', 'activeAuctions', 'profile', 'watchlistAuctions'));
+        return view('user.dashboard', compact('stats', 'winningBids', 'recentBids', 'activeAuctions', 'profile', 'watchlistAuctions', 'watchlistTotal'));
     }
 }

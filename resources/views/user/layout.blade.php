@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Varela Round', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8f9fa; color: #2c3e50; line-height: 1.6; }
+        body { font-family: 'Varela Round', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8f9fa; color: #111; line-height: 1.6; }
         input, select, textarea, button { font-family: 'Varela Round', sans-serif; }
         input::placeholder, textarea::placeholder { font-family: 'Varela Round', sans-serif; }
         .app-shell { display: flex; min-height: 100vh; }
@@ -35,6 +35,16 @@
             text-align: left;
         }
         .menu-link:hover, .logout-btn:hover, .menu-link.active { background: rgba(255,255,255,0.15); }
+        .menu-link i.fa-fw { width: 1.25em; text-align: center; }
+        .menu-badge {
+            margin-left: auto;
+            background: #ef5350;
+            color: #fff;
+            border-radius: 20px;
+            padding: 2px 8px;
+            font-size: 12px;
+            font-weight: 600;
+        }
         .logout-btn { background: #c62828; margin-top: 12px; }
         .logout-btn:hover { background: #b71c1c; }
         .content-area { flex: 1; min-width: 0; }
@@ -52,32 +62,47 @@
         .hamburger-btn { background: transparent; border: none; color: #fff; font-size: 22px; cursor: pointer; }
         .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
         .card { background: white; padding: 35px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 25px; border: 1px solid #e9ecef; }
-        .card h2 { font-size: 28px; color: #1a237e; margin-bottom: 20px; font-weight: 400; }
+        .card h2 { font-size: 28px; color: #111; margin-bottom: 20px; font-weight: 600; }
         .btn { padding: 12px 24px; background: #1a237e; color: white; text-decoration: none; border: none; border-radius: 8px; cursor: pointer; display: inline-block; }
         .btn:hover { background: #283593; }
         .btn-success { background: #2e7d32; }
         .btn-success:hover { background: #1b5e20; }
         .btn-secondary { background: #546e7a; }
         .btn-secondary:hover { background: #455a64; }
-        .alert { padding: 16px 20px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid; }
-        .alert-error { background: #ffebee; color: #c62828; border-color: #c62828; }
-        .alert-success { background: #e8f5e9; color: #2e7d32; border-color: #2e7d32; }
-        .alert-info { background: #e3f2fd; color: #1565c0; border-color: #1565c0; }
+        /* Black body text; one colored keyword (use .alert-keyword + .alert-body) */
+        .alert-show {
+            padding: 14px 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #e8ecf2;
+            border-left: 4px solid;
+            color: #111;
+            font-size: 14px;
+            line-height: 1.55;
+        }
+        .alert-show .alert-keyword { font-weight: 600; margin-right: 6px; }
+        .alert-show .alert-body { color: #111; }
+        .alert-show-success { background: #f4fbf6; border-left-color: #2e7d32; }
+        .alert-show-success .alert-keyword { color: #2e7d32; }
+        .alert-show-error { background: #fff8f8; border-left-color: #c62828; }
+        .alert-show-error .alert-keyword { color: #c62828; }
+        .alert-show-info { background: #f5f9fc; border-left-color: #1565c0; }
+        .alert-show-info .alert-keyword { color: #1565c0; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 25px; }
         .auction-card { background: white; border-radius: 12px; padding: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border: 1px solid #e9ecef; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         table th, table td { padding: 15px; text-align: left; border-bottom: 1px solid #e9ecef; }
-        table th { background: #f8f9fa; color: #1a237e; font-weight: 400; }
+        table th { background: #f8f9fa; color: #111; font-weight: 600; }
         .form-group { margin-bottom: 25px; }
         .form-group input { width: 100%; padding: 12px 16px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 15px; font-family: inherit; }
-        .theme-label { display:block; margin-bottom:6px; color:#1a237e; font-size:14px; }
+        .theme-label { display:block; margin-bottom:6px; color:#111; font-size:14px; font-weight:500; }
         .theme-control {
             width: 100%;
             padding: 12px 14px;
             border: 2px solid #d8dfeb;
             border-radius: 10px;
             background: #fff;
-            color: #2c3e50;
+            color: #111;
             transition: border-color .2s, box-shadow .2s;
         }
         .theme-control:focus {
@@ -115,6 +140,7 @@
             ->count();
     }
     $currentRoute = request()->route()?->getName();
+    $notificationsNavActive = in_array($currentRoute, ['user.notifications', 'user.notifications.show'], true);
 @endphp
 <div class="app-shell">
     <div class="topbar-mobile">
@@ -133,19 +159,15 @@
             <div class="sidebar-wallet-label">Wallet Balance</div>
             <div class="sidebar-wallet-amount">₹{{ number_format((float) $walletBalance, 2) }}</div>
         </div> --}}
-        <a class="menu-link {{ $currentRoute === 'user.dashboard' ? 'active' : '' }}" href="{{ route('user.dashboard') }}"><i class="fas fa-gauge-high"></i> Dashboard</a>
-        <a class="menu-link {{ str_starts_with((string)$currentRoute, 'user.auctions') ? 'active' : '' }}" href="{{ route('user.auctions.index') }}"><i class="fas fa-gavel"></i> Auctions</a>
-        <a class="menu-link {{ $currentRoute === 'user.my-bids' ? 'active' : '' }}" href="{{ route('user.my-bids') }}"><i class="fas fa-list-check"></i> My Bids</a>
-        <a class="menu-link {{ $currentRoute === 'user.won-auctions' ? 'active' : '' }}" href="{{ route('user.won-auctions') }}"><i class="fas fa-trophy"></i> Won Auctions</a>
-        <a class="menu-link {{ $currentRoute === 'user.lost-auctions' ? 'active' : '' }}" href="{{ route('user.lost-auctions') }}"><i class="fas fa-circle-xmark"></i> Lost Auctions</a>
-        <a class="menu-link {{ $currentRoute === 'user.notifications' ? 'active' : '' }}" href="{{ route('user.notifications') }}"><i class="fas fa-bell"></i> Notifications @if($unreadNotificationCount > 0)<span style="margin-left:auto;background:#ef5350;color:#fff;border-radius:20px;padding:2px 8px;font-size:12px;">{{ $unreadNotificationCount }}</span>@endif</a>
-        <a class="menu-link {{ $currentRoute === 'user.support' ? 'active' : '' }}" href="{{ route('user.support') }}"><i class="fas fa-headset"></i> Support / Helpdesk</a>
-        {{-- [EMD/WALLET DISABLED] Wallet menu link removed --}}
-        {{-- <a class="menu-link {{ str_starts_with((string)$currentRoute, 'wallet.') ? 'active' : '' }}" href="{{ route('wallet.index') }}"><i class="fas fa-wallet"></i> Wallet</a> --}}
-        <a class="menu-link {{ $currentRoute === 'user.profile' ? 'active' : '' }}" href="{{ route('user.profile') }}"><i class="fas fa-user"></i> Profile</a>
+        <a class="menu-link {{ $currentRoute === 'user.dashboard' ? 'active' : '' }}" href="{{ route('user.dashboard') }}"><i class="fas fa-fw fa-gauge-high"></i><span>Dashboard</span></a>
+        <a class="menu-link {{ str_starts_with((string) $currentRoute, 'user.auctions') ? 'active' : '' }}" href="{{ route('user.auctions.index') }}"><i class="fas fa-fw fa-hammer"></i><span>Browse auctions</span></a>
+        <a class="menu-link {{ $currentRoute === 'user.my-bids' ? 'active' : '' }}" href="{{ route('user.my-bids') }}"><i class="fas fa-fw fa-list-check"></i><span>My bids</span></a>
+        <a class="menu-link {{ $notificationsNavActive ? 'active' : '' }}" href="{{ route('user.notifications') }}"><i class="fas fa-fw fa-bell"></i><span>Notifications</span>@if($unreadNotificationCount > 0)<span class="menu-badge">{{ $unreadNotificationCount }}</span>@endif</a>
+        <a class="menu-link {{ $currentRoute === 'user.notifications.new' ? 'active' : '' }}" href="{{ route('user.notifications.new') }}"><i class="fas fa-fw fa-pen-to-square"></i><span>New message</span></a>
+        <a class="menu-link {{ $currentRoute === 'user.profile' ? 'active' : '' }}" href="{{ route('user.profile') }}"><i class="fas fa-fw fa-user"></i><span>Profile</span></a>
         <form method="POST" action="{{ route('logout') }}">
             @csrf
-            <button class="logout-btn" type="submit"><i class="fas fa-right-from-bracket"></i> Logout</button>
+            <button class="logout-btn" type="submit"><i class="fas fa-fw fa-right-from-bracket"></i><span>Logout</span></button>
         </form>
     </aside>
     <div id="sidebarBackdrop" class="sidebar-backdrop"></div>

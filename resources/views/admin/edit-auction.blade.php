@@ -10,8 +10,11 @@
         <div class="form-group"><label>Description</label><textarea name="description" style="width:100%;padding:12px 16px;border:2px solid #e9ecef;border-radius:8px;">{{ old('description',$auction->description) }}</textarea></div>
         <div class="form-group"><label>Base Price (₹) *</label><input type="number" step="0.01" min="0" name="base_price" required value="{{ old('base_price',$auction->base_price) }}"></div>
         <div class="form-group"><label>Minimum Bid Increment (₹) *</label><input type="number" step="0.01" min="0" name="min_increment" required value="{{ old('min_increment',$auction->min_increment) }}"></div>
-        {{-- [EMD DISABLED] EMD Amount field removed; emd_amount is always 0 --}}
-        <input type="hidden" name="emd_amount" value="0">
+        <div class="form-group">
+            <label>Participation Fee (₹) *</label>
+            <input type="number" step="0.01" min="0" name="emd_amount" required value="{{ old('emd_amount',$auction->emd_amount) }}">
+            <small style="display:block;margin-top:6px;color:#6c757d;">All users must pay this amount before placing bids in this auction.</small>
+        </div>
         <div class="form-group"><label>Auction Start Date *</label><input type="date" name="start_datetime" required value="{{ old('start_datetime', \Carbon\Carbon::parse($auction->start_datetime)->format('Y-m-d')) }}"></div>
         <div class="form-group"><label>Auction End Date *</label><input type="date" name="end_datetime" required value="{{ old('end_datetime', \Carbon\Carbon::parse($auction->end_datetime)->format('Y-m-d')) }}"></div>
         <button class="btn" type="submit">Update Auction</button>

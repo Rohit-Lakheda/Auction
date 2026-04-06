@@ -70,10 +70,10 @@ class PaymentController extends Controller
             ->where('status', 'closed')
             ->first();
         if (! $auction) {
-            return redirect()->route('user.won-auctions')->with('error', 'auction_not_found');
+            return redirect()->route('user.auctions.index', ['view' => 'won'])->with('error', 'Auction not found or you do not have access.');
         }
         if (($auction->payment_status ?? 'pending') === 'paid') {
-            return redirect()->route('user.won-auctions')->with('error', 'already_paid');
+            return redirect()->route('user.auctions.index', ['view' => 'won'])->with('error', 'This auction is already paid.');
         }
 
         $lockedEmd = (float) (DB::table('auction_participants')
@@ -184,7 +184,7 @@ class PaymentController extends Controller
     {
         $data = array_merge($request->query(), $request->post());
         if (! $payu->verifyHash($data) || ($data['status'] ?? '') !== 'success') {
-            return redirect()->route('user.won-auctions')->with('error', 'payment_verification_failed');
+            return redirect()->route('user.auctions.index', ['view' => 'won'])->with('error', 'Payment could not be verified. Please contact support if the amount was debited.');
         }
 
         $txnid = (string) ($data['txnid'] ?? '');
@@ -282,7 +282,7 @@ class PaymentController extends Controller
             return redirect()->route('user.auctions.show', ['auctionId' => $auctionId])
                 ->with('bid_success', 'Participation payment successful. You can now place bids.');
         }
-        return redirect()->route('user.won-auctions')->with('payment', 'success');
+        return redirect()->route('user.auctions.index', ['view' => 'won'])->with('payment', 'success');
     }
 
     public function auctionFailure(Request $request)
@@ -305,7 +305,7 @@ class PaymentController extends Controller
         if ($flowType === 'PARTICIPATION' && $auctionId > 0) {
             return redirect()->route('user.auctions.show', ['auctionId' => $auctionId])->with('bid_error', 'Participation payment failed.');
         }
-        return redirect()->route('user.won-auctions')->with('error', 'payment_failed');
+        return redirect()->route('user.auctions.index', ['view' => 'won'])->with('error', 'Payment failed. You can try again from your won auctions.');
     }
 
     public function initiateRegistrationPayment(Request $request, PayuService $payu)

@@ -16,6 +16,11 @@
             <div class="form-group"><label>Registration Amount (₹) *</label><input type="number" name="registration_amount" step="0.01" min="0" required value="{{ number_format($registrationAmount,2,'.','') }}"></div>
             <button class="btn" type="submit">Update Registration Amount</button>
         </form>
+        <form method="POST" style="margin-top:16px;">@csrf<input type="hidden" name="form_type" value="participation_fee">
+            <div class="form-group"><label>Default Bid Participation Fee (₹)</label><input type="number" name="bid_participation_fee" step="0.01" min="0" required value="{{ number_format($defaultParticipationFee,2,'.','') }}"></div>
+            <small style="display:block;margin-bottom:10px;color:#6c757d;">Used when auction-specific participation fee is not set.</small>
+            <button class="btn" type="submit">Update Default Participation Fee</button>
+        </form>
     </div>
     {{-- [EMD DISABLED] EMD Settings tab content removed
     <div id="tab-emd" class="tab-content {{ $activeTab==='emd'?'active':'' }}">...(removed)...</div>

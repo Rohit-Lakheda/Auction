@@ -7,7 +7,7 @@
     @if($errors->any())<div class="alert alert-error">{{ $errors->first() }}</div>@endif
     <div class="alert alert-info">
         <strong>CSV Format Required:</strong><br>
-        Columns: item_title, item_description, base_price, min_increment, start_date, end_date<br>
+        Columns: item_title, item_description, base_price, min_increment, start_date, end_date, participation_fee(optional)<br>
         <a href="{{ asset('sample_auction_template.csv') }}" download style="font-weight:bold;">Download Sample Template</a>
     </div>
     @if(empty($preview))
@@ -20,10 +20,10 @@
         <h3>Preview Data ({{ count($preview) }} rows)</h3>
         <div style="max-height:400px;overflow-y:auto;margin:20px 0;">
             <table>
-                <thead><tr><th>Title</th><th>Description</th><th>Base Price</th><th>Min Increment</th><th>Start Date</th><th>End Date</th></tr></thead>
+                <thead><tr><th>Title</th><th>Description</th><th>Base Price</th><th>Min Increment</th><th>Participation Fee</th><th>Start Date</th><th>End Date</th></tr></thead>
                 <tbody>
                 @foreach($preview as $row)
-                    <tr><td>{{ $row['title'] }}</td><td>{{ \Illuminate\Support\Str::limit($row['description'], 50) }}</td><td>₹{{ number_format((float)$row['base_price'],2) }}</td><td>₹{{ number_format((float)$row['min_increment'],2) }}</td><td>{{ \Carbon\Carbon::parse($row['start_datetime'])->format('d-M-Y') }}</td><td>{{ \Carbon\Carbon::parse($row['end_datetime'])->format('d-M-Y') }}</td></tr>
+                    <tr><td>{{ $row['title'] }}</td><td>{{ \Illuminate\Support\Str::limit($row['description'], 50) }}</td><td>₹{{ number_format((float)$row['base_price'],2) }}</td><td>₹{{ number_format((float)$row['min_increment'],2) }}</td><td>₹{{ number_format((float)($row['emd_amount'] ?? 0),2) }}</td><td>{{ \Carbon\Carbon::parse($row['start_datetime'])->format('d-M-Y') }}</td><td>{{ \Carbon\Carbon::parse($row['end_datetime'])->format('d-M-Y') }}</td></tr>
                 @endforeach
                 </tbody>
             </table>

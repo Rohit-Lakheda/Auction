@@ -4,16 +4,28 @@
 
 @section('content')
 <div class="card"><h2>My Profile</h2></div>
-@if(session('success')) <div class="alert alert-success">{{ session('success') }}</div> @endif
-@if(session('error')) <div class="alert alert-error">{{ session('error') }}</div> @endif
-@if($errors->any()) <div class="alert alert-error">{{ $errors->first() }}</div> @endif
+@if(session('success'))
+    <div class="alert-show alert-show-success">
+        <span class="alert-keyword">Success.</span><span class="alert-body">{{ session('success') }}</span>
+    </div>
+@endif
+@if(session('error'))
+    <div class="alert-show alert-show-error">
+        <span class="alert-keyword">Error.</span><span class="alert-body">{{ session('error') }}</span>
+    </div>
+@endif
+@if($errors->any())
+    <div class="alert-show alert-show-error">
+        <span class="alert-keyword">Error.</span><span class="alert-body">{{ $errors->first() }}</span>
+    </div>
+@endif
 
 <div class="grid" style="margin-bottom: 20px;">
     <a href="{{ route('user.my-bids') }}" class="card" style="text-align:center;text-decoration:none;color:inherit;transition:transform .2s,box-shadow .2s;">
         <h3>{{ $stats['total_bids'] }}</h3>
         <p>Total Bids</p>
     </a>
-    <a href="{{ route('user.won-auctions') }}" class="card" style="text-align:center;text-decoration:none;color:inherit;transition:transform .2s,box-shadow .2s;">
+    <a href="{{ route('user.auctions.index', ['view' => 'won']) }}" class="card" style="text-align:center;text-decoration:none;color:inherit;transition:transform .2s,box-shadow .2s;">
         <h3>{{ $stats['won_auctions'] }}</h3>
         <p>Won Auctions</p>
     </a>

@@ -365,14 +365,13 @@ class AdminController extends Controller
                 'description' => ['nullable', 'string'],
                 'base_price' => ['required', 'numeric', 'gt:0'],
                 'min_increment' => ['required', 'numeric', 'gt:0'],
-                // [EMD DISABLED] 'emd_amount' => ['required', 'numeric', 'gte:0'],
+                'emd_amount' => ['required', 'numeric', 'gte:0'],
                 'start_datetime' => ['required', 'date'],
                 'end_datetime' => ['required', 'date', 'after:start_datetime'],
             ]);
             $data = $this->normalizeAuctionDateInputs($data);
             DB::table('auctions')->insert([
                 ...$data,
-                'emd_amount' => 0, // [EMD DISABLED] always 0
                 'created_by' => (int) $request->session()->get('user_id'),
                 'status' => 'upcoming',
                 'created_at' => now(),
@@ -399,12 +398,11 @@ class AdminController extends Controller
                 'description' => ['nullable', 'string'],
                 'base_price' => ['required', 'numeric', 'gt:0'],
                 'min_increment' => ['required', 'numeric', 'gt:0'],
-                // [EMD DISABLED] 'emd_amount' => ['required', 'numeric', 'gte:0'],
+                'emd_amount' => ['required', 'numeric', 'gte:0'],
                 'start_datetime' => ['required', 'date'],
                 'end_datetime' => ['required', 'date', 'after:start_datetime'],
             ]);
             $data = $this->normalizeAuctionDateInputs($data);
-            $data['emd_amount'] = 0; // [EMD DISABLED] always 0
             DB::table('auctions')->where('id', $id)->update([...$data, 'updated_at' => now()]);
             return back()->with('success', 'Auction updated successfully!');
         }
@@ -836,6 +834,23 @@ class AdminController extends Controller
                 return redirect()->route('admin.settings', ['tab' => 'registration'])->with('success', 'Registration amount updated successfully!');
             }
 
+            if ($formType === 'participation_fee') {
+                $amount = (float) $request->input('bid_participation_fee', 0);
+                if ($amount < 0) {
+                    return back()->withErrors(['bid_participation_fee' => 'Participation fee cannot be negative']);
+                }
+                DB::table('settings')->updateOrInsert(
+                    ['setting_key' => 'bid_participation_fee'],
+                    [
+                        'setting_value' => number_format($amount, 2, '.', ''),
+                        'description' => 'Default participation fee in INR for auctions with no custom fee',
+                        'updated_by' => (int) $request->session()->get('user_id'),
+                        'updated_at' => now(),
+                    ]
+                );
+                return redirect()->route('admin.settings', ['tab' => 'registration'])->with('success', 'Default participation fee updated successfully!');
+            }
+
             // [EMD DISABLED] emd_settings form handler commented out
             // if ($formType === 'emd_settings') { ... }
 
@@ -905,6 +920,7 @@ class AdminController extends Controller
         }
 
         $registrationAmount = (float) (DB::table('settings')->where('setting_key', 'registration_amount')->value('setting_value') ?? 500.00);
+        $defaultParticipationFee = (float) (DB::table('settings')->where('setting_key', 'bid_participation_fee')->value('setting_value') ?? 0.00);
         $emdSettings = [
             'emd_default_amount' => $this->settingsService->getFloat('emd_default_amount', (float) config('emd.default_emd_amount', 10000)),
             'emd_penalty_percentage' => $this->settingsService->getFloat('emd_penalty_percentage', (float) config('emd.penalty_percentage', 25)),
@@ -924,7 +940,7 @@ class AdminController extends Controller
             'is_active' => $row->is_active ?? 1,
         ];
 
-        return view('admin.settings', compact('registrationAmount', 'emdSettings', 'emailSettings', 'activeTab'));
+        return view('admin.settings', compact('registrationAmount', 'defaultParticipationFee', 'emdSettings', 'emailSettings', 'activeTab'));
     }
 
     public function uploadExcel(Request $request)
@@ -941,7 +957,7 @@ class AdminController extends Controller
                             'description' => $row['description'],
                             'base_price' => $row['base_price'],
                             'min_increment' => $row['min_increment'],
-                            'emd_amount' => 0, // [EMD DISABLED] always 0
+                            'emd_amount' => isset($row['emd_amount']) ? (float) $row['emd_amount'] : $this->settingsService->getFloat('bid_participation_fee', 0),
                             'start_datetime' => Carbon::parse($row['start_datetime'])->startOfDay()->format('Y-m-d H:i:s'),
                             'end_datetime' => Carbon::parse($row['end_datetime'])->startOfDay()->format('Y-m-d H:i:s'),
                             'created_by' => (int) $request->session()->get('user_id'),
@@ -972,6 +988,9 @@ class AdminController extends Controller
                     fgetcsv($handle);
                     while (($row = fgetcsv($handle)) !== false) {
                         if (count($row) >= 6) {
+                            $participationFee = isset($row[6]) && trim((string) $row[6]) !== ''
+                                ? (float) $row[6]
+                                : $this->settingsService->getFloat('bid_participation_fee', 0);
                             $rows[] = [
                                 'title' => (string) $row[0],
                                 'description' => (string) $row[1],
@@ -979,7 +998,7 @@ class AdminController extends Controller
                                 'min_increment' => (float) $row[3],
                                 'start_datetime' => (string) $row[4],
                                 'end_datetime' => (string) $row[5],
-                                'emd_amount' => isset($row[6]) ? (float) $row[6] : $this->settingsService->getFloat('emd_default_amount', (float) config('emd.default_emd_amount', 10000)),
+                                'emd_amount' => max(0, $participationFee),
                             ];
                         }
                     }

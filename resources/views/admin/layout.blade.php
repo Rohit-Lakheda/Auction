@@ -31,7 +31,7 @@
             margin-bottom:14px;
         }
         .sidebar-logo img { height:44px; background:#fff; padding:5px; border-radius:10px; }
-        .menu-link, .logout-btn {
+        .menu-link, .logout-btn, .menu-group-summary {
             width: calc(100% - 16px);
             margin:4px 8px;
             display:flex;
@@ -45,8 +45,16 @@
             background:transparent;
             cursor:pointer;
             text-align:left;
+            font-size:14px;
         }
-        .menu-link:hover, .menu-link.active, .logout-btn:hover { background:rgba(255,255,255,.15); }
+        .menu-link:hover, .menu-link.active, .logout-btn:hover, .menu-group-summary:hover { background:rgba(255,255,255,.15); }
+        .menu-group { margin-top:4px; }
+        .menu-group summary { list-style:none; }
+        .menu-group summary::-webkit-details-marker { display:none; }
+        .menu-group[open] .menu-group-summary { background:rgba(255,255,255,.12); }
+        .menu-sub-links { margin:4px 0 8px 0; }
+        .menu-sub-links .menu-link { padding-left:34px; font-size:13px; opacity:.95; }
+        .menu-group-caret { margin-left:auto; font-size:12px; opacity:.8; }
         .logout-btn { background:#c62828; margin-top:12px; }
         .logout-btn:hover { background:#b71c1c; }
         .content-area { flex:1; min-width:0; }
@@ -112,22 +120,37 @@
             <img src="{{ asset('images/nixi_logo1.jpg') }}" alt="NIXI Logo">
             <strong>Admin Panel</strong>
         </div>
-        <div style="padding:8px 12px 4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.75;">Overview</div>
         <a class="menu-link {{ $currentRoute === 'admin.dashboard' ? 'active' : '' }}" href="{{ route('admin.dashboard') }}"><i class="fas fa-gauge-high"></i> Dashboard</a>
-        <a class="menu-link {{ $currentRoute === 'admin.operations' ? 'active' : '' }}" href="{{ route('admin.operations') }}"><i class="fas fa-screwdriver-wrench"></i> Operations</a>
-        <a class="menu-link {{ $currentRoute === 'admin.bids.index' ? 'active' : '' }}" href="{{ route('admin.bids.index') }}"><i class="fas fa-hand-holding-dollar"></i> All Bids</a>
-        <div style="padding:12px 12px 4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.75;">Auction Control</div>
-        <a class="menu-link {{ $currentRoute === 'admin.auctions.index' ? 'active' : '' }}" href="{{ route('admin.auctions.index') }}"><i class="fas fa-table-list"></i> Auction Details</a>
-        <a class="menu-link {{ $currentRoute === 'admin.auctions.add' ? 'active' : '' }}" href="{{ route('admin.auctions.add') }}"><i class="fas fa-plus-circle"></i> Add Auction</a>
-        <a class="menu-link {{ $currentRoute === 'admin.upload-excel' ? 'active' : '' }}" href="{{ route('admin.upload-excel') }}"><i class="fas fa-file-arrow-up"></i> Upload Excel</a>
-        <a class="menu-link {{ $currentRoute === 'admin.completed' ? 'active' : '' }}" href="{{ route('admin.completed') }}"><i class="fas fa-check-double"></i> Completed Auctions</a>
-        <div style="padding:12px 12px 4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.75;">Users & Configuration</div>
-        <a class="menu-link {{ $currentRoute === 'admin.manage-users' ? 'active' : '' }}" href="{{ route('admin.manage-users') }}"><i class="fas fa-users"></i> Manage Users</a>
-        <a class="menu-link {{ str_starts_with((string)$currentRoute, 'admin.notifications') ? 'active' : '' }}" href="{{ route('admin.notifications') }}"><i class="fas fa-bell"></i> Notifications</a>
-        <a class="menu-link {{ $currentRoute === 'admin.support.tickets' ? 'active' : '' }}" href="{{ route('admin.support.tickets') }}"><i class="fas fa-headset"></i> Support Tickets</a>
-        <a class="menu-link {{ $currentRoute === 'admin.blacklist' ? 'active' : '' }}" href="{{ route('admin.blacklist') }}"><i class="fas fa-user-slash"></i> Blacklist</a>
-        <a class="menu-link {{ $currentRoute === 'admin.audit.logs' ? 'active' : '' }}" href="{{ route('admin.audit.logs') }}"><i class="fas fa-clipboard-list"></i> Audit Logs</a>
-        <a class="menu-link {{ $currentRoute === 'admin.settings' ? 'active' : '' }}" href="{{ route('admin.settings') }}"><i class="fas fa-gear"></i> Settings</a>
+        <a class="menu-link {{ $currentRoute === 'admin.operations' ? 'active' : '' }}" href="{{ route('admin.operations') }}"><i class="fas fa-screwdriver-wrench"></i> Operations Center</a>
+
+        <details class="menu-group" {{ str_starts_with((string) $currentRoute, 'admin.auctions') || $currentRoute === 'admin.upload-excel' || $currentRoute === 'admin.completed' || $currentRoute === 'admin.bids.index' ? 'open' : '' }}>
+            <summary class="menu-group-summary"><i class="fas fa-gavel"></i> Auctions <i class="fas fa-chevron-down menu-group-caret"></i></summary>
+            <div class="menu-sub-links">
+                <a class="menu-link {{ $currentRoute === 'admin.auctions.index' ? 'active' : '' }}" href="{{ route('admin.auctions.index') }}">All Auctions</a>
+                <a class="menu-link {{ $currentRoute === 'admin.auctions.add' ? 'active' : '' }}" href="{{ route('admin.auctions.add') }}">Add Auction</a>
+                <a class="menu-link {{ $currentRoute === 'admin.upload-excel' ? 'active' : '' }}" href="{{ route('admin.upload-excel') }}">Import Auctions</a>
+                <a class="menu-link {{ $currentRoute === 'admin.completed' ? 'active' : '' }}" href="{{ route('admin.completed') }}">Completed Auctions</a>
+                <a class="menu-link {{ $currentRoute === 'admin.bids.index' ? 'active' : '' }}" href="{{ route('admin.bids.index') }}">Bid Monitoring</a>
+            </div>
+        </details>
+
+        <details class="menu-group" {{ $currentRoute === 'admin.manage-users' || $currentRoute === 'admin.blacklist' || $currentRoute === 'admin.support.tickets' || str_starts_with((string)$currentRoute, 'admin.notifications') ? 'open' : '' }}>
+            <summary class="menu-group-summary"><i class="fas fa-users"></i> Users & Support <i class="fas fa-chevron-down menu-group-caret"></i></summary>
+            <div class="menu-sub-links">
+                <a class="menu-link {{ $currentRoute === 'admin.manage-users' ? 'active' : '' }}" href="{{ route('admin.manage-users') }}">Manage Users</a>
+                <a class="menu-link {{ str_starts_with((string)$currentRoute, 'admin.notifications') ? 'active' : '' }}" href="{{ route('admin.notifications') }}">Notifications</a>
+                <a class="menu-link {{ $currentRoute === 'admin.support.tickets' ? 'active' : '' }}" href="{{ route('admin.support.tickets') }}">Support Tickets</a>
+                <a class="menu-link {{ $currentRoute === 'admin.blacklist' ? 'active' : '' }}" href="{{ route('admin.blacklist') }}">Blocked Identities</a>
+            </div>
+        </details>
+
+        <details class="menu-group" {{ $currentRoute === 'admin.audit.logs' || $currentRoute === 'admin.settings' ? 'open' : '' }}>
+            <summary class="menu-group-summary"><i class="fas fa-sliders"></i> Configuration <i class="fas fa-chevron-down menu-group-caret"></i></summary>
+            <div class="menu-sub-links">
+                <a class="menu-link {{ $currentRoute === 'admin.settings' ? 'active' : '' }}" href="{{ route('admin.settings') }}">Settings</a>
+                <a class="menu-link {{ $currentRoute === 'admin.audit.logs' ? 'active' : '' }}" href="{{ route('admin.audit.logs') }}">Audit Logs</a>
+            </div>
+        </details>
         <form method="POST" action="{{ route('logout') }}">
             @csrf
             <button class="logout-btn" type="submit"><i class="fas fa-right-from-bracket"></i> Logout</button>

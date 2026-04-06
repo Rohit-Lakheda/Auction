@@ -23,7 +23,7 @@ class InvoiceController extends Controller
             ->whereIn('status', ['closed', 'completed'])
             ->first();
         if (! $auction) {
-            return redirect()->route('user.won-auctions')->with('error', 'auction_not_found');
+            return redirect()->route('user.auctions.index', ['view' => 'won'])->with('error', 'Auction not found or you do not have access.');
         }
 
         $user = DB::table('users')->where('id', $userId)->first();
@@ -34,7 +34,7 @@ class InvoiceController extends Controller
             ->latest('created_at')
             ->first();
         if (! $payment) {
-            return redirect()->route('user.won-auctions')->with('error', 'invoice_available_after_payment');
+            return redirect()->route('user.auctions.index', ['view' => 'won'])->with('error', 'The invoice is available after payment is completed.');
         }
 
         $invoiceData = [

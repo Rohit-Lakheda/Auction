@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
+use Carbon\Carbon;
 
 class UserAuctionController extends Controller
 {
@@ -28,6 +29,10 @@ class UserAuctionController extends Controller
         $watchlistEnabled = Schema::hasTable('watchlists');
         $sort = (string) $request->query('sort', 'ending_soon');
         $search = trim((string) $request->query('search', ''));
+        $view = (string) $request->query('view', 'all');
+        if (! in_array($view, ['all', 'live', 'bidding', 'watchlist', 'won'], true)) {
+            $view = 'all';
+        }
         // [EMD DISABLED] $emdFilter = (string) $request->query('emd', 'all');
         $emdFilter = 'all';
         $perPage = $this->resolvePerPage($request, 12);
@@ -36,13 +41,60 @@ class UserAuctionController extends Controller
             ? "(SELECT COUNT(*) FROM watchlists w WHERE w.auction_id = a.id AND w.user_id = ?) as watchlisted_count"
             : "0 as watchlisted_count";
 
-        $query = DB::table('auctions as a')
-            ->selectRaw("a.*, (SELECT MAX(amount) FROM bids WHERE auction_id = a.id) as current_bid, (SELECT COUNT(*) FROM bids WHERE auction_id = a.id) as bid_count, {$watchSelect}", $watchlistEnabled ? [$userId] : [])
-            ->where('a.status', 'active')
-            ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%' . $search . '%'));
-        // [EMD DISABLED] EMD amount filters removed
+        $now = now();
 
-        if ($sort === 'highest_bid') {
+        if ($view === 'won') {
+            $query = DB::table('auctions as a')
+                ->selectRaw('a.*, (SELECT MAX(amount) FROM bids WHERE auction_id = a.id) as current_bid, (SELECT COUNT(*) FROM bids WHERE auction_id = a.id) as bid_count, 0 as watchlisted_count')
+                ->where('a.winner_user_id', $userId)
+                ->whereIn('a.status', ['closed', 'completed'])
+                ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%' . $search . '%'));
+        } elseif ($view === 'watchlist' && $watchlistEnabled) {
+            $query = DB::table('watchlists as w')
+                ->join('auctions as a', 'a.id', '=', 'w.auction_id')
+                ->selectRaw('a.*, (SELECT MAX(amount) FROM bids WHERE auction_id = a.id) as current_bid, (SELECT COUNT(*) FROM bids WHERE auction_id = a.id) as bid_count, 1 as watchlisted_count')
+                ->where('w.user_id', $userId)
+                ->where('a.status', 'active')
+                ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%' . $search . '%'));
+        } elseif ($view === 'live') {
+            $query = DB::table('auctions as a')
+                ->selectRaw("a.*, (SELECT MAX(amount) FROM bids WHERE auction_id = a.id) as current_bid, (SELECT COUNT(*) FROM bids WHERE auction_id = a.id) as bid_count, {$watchSelect}", $watchlistEnabled ? [$userId] : [])
+                ->where('a.status', 'active')
+                ->where('a.end_datetime', '>', $now)
+                ->where('a.end_datetime', '<=', $now->copy()->addDays(7))
+                ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%' . $search . '%'));
+        } elseif ($view === 'bidding') {
+            $query = DB::table('auctions as a')
+                ->selectRaw("a.*, (SELECT MAX(amount) FROM bids WHERE auction_id = a.id) as current_bid, (SELECT COUNT(*) FROM bids WHERE auction_id = a.id) as bid_count, {$watchSelect}", $watchlistEnabled ? [$userId] : [])
+                ->where('a.status', 'active')
+                ->where('a.end_datetime', '>', $now)
+                ->whereExists(function ($q) use ($userId): void {
+                    $q->select(DB::raw(1))
+                        ->from('bids as b')
+                        ->whereColumn('b.auction_id', 'a.id')
+                        ->where('b.user_id', $userId);
+                })
+                ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%' . $search . '%'));
+        } elseif ($view === 'watchlist' && ! $watchlistEnabled) {
+            $query = DB::table('auctions as a')
+                ->selectRaw('a.*, 0 as current_bid, 0 as bid_count, 0 as watchlisted_count')
+                ->whereRaw('0 = 1');
+        } else {
+            $query = DB::table('auctions as a')
+                ->selectRaw("a.*, (SELECT MAX(amount) FROM bids WHERE auction_id = a.id) as current_bid, (SELECT COUNT(*) FROM bids WHERE auction_id = a.id) as bid_count, {$watchSelect}", $watchlistEnabled ? [$userId] : [])
+                ->where('a.status', 'active')
+                ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%' . $search . '%'));
+        }
+
+        if ($view === 'won') {
+            if ($sort === 'highest_bid') {
+                $query->orderByDesc('a.final_price');
+            } elseif ($sort === 'newest') {
+                $query->orderByDesc('a.id');
+            } else {
+                $query->orderByDesc('a.end_datetime');
+            }
+        } elseif ($sort === 'highest_bid') {
             $query->orderByDesc('current_bid');
         } elseif ($sort === 'newest') {
             $query->orderByDesc('a.id');
@@ -74,14 +126,50 @@ class UserAuctionController extends Controller
                 ->get();
         }
 
+        $tabCountAll = (int) DB::table('auctions')->where('status', 'active')->count();
+        $tabCountLive = (int) DB::table('auctions')
+            ->where('status', 'active')
+            ->where('end_datetime', '>', $now)
+            ->where('end_datetime', '<=', $now->copy()->addDays(7))
+            ->count();
+        $tabCountWatchlist = $watchlistEnabled
+            ? (int) DB::table('watchlists as w')
+                ->join('auctions as a', 'a.id', '=', 'w.auction_id')
+                ->where('w.user_id', $userId)
+                ->where('a.status', 'active')
+                ->count()
+            : 0;
+        $tabCountWon = (int) DB::table('auctions')
+            ->where('winner_user_id', $userId)
+            ->whereIn('status', ['closed', 'completed'])
+            ->count();
+        $tabCountBidding = (int) DB::table('auctions as a')
+            ->where('a.status', 'active')
+            ->where('a.end_datetime', '>', $now)
+            ->whereExists(function ($q) use ($userId): void {
+                $q->select(DB::raw(1))
+                    ->from('bids as b')
+                    ->whereColumn('b.auction_id', 'a.id')
+                    ->where('b.user_id', $userId);
+            })
+            ->count();
+
         return view('user.auctions.index', [
             'auctions' => $auctions,
+            'view' => $view,
             'sort' => $sort,
             'search' => $search,
             'emdFilter' => $emdFilter, // [EMD DISABLED] always 'all'
             'perPage' => (string) $request->query('per_page', (string) $perPage),
             'recentlyViewed' => $recentlyViewed,
             'watchlistAuctions' => $watchlistAuctions,
+            'tabCounts' => [
+                'all' => $tabCountAll,
+                'live' => $tabCountLive,
+                'bidding' => $tabCountBidding,
+                'watchlist' => $tabCountWatchlist,
+                'won' => $tabCountWon,
+            ],
         ]);
     }
 
@@ -105,9 +193,15 @@ class UserAuctionController extends Controller
             ->where('b.auction_id', $auctionId)
             ->orderByDesc('b.created_at')
             ->limit(10)
-            ->get(['b.amount', 'b.created_at', 'u.name']);
+            ->get(['b.amount', 'b.created_at', 'u.name', 'b.user_id']);
 
         $userId = (int) $request->session()->get('user_id');
+        $myBidHistory = DB::table('bids')
+            ->where('auction_id', $auctionId)
+            ->where('user_id', $userId)
+            ->orderByDesc('created_at')
+            ->limit(12)
+            ->get(['amount', 'created_at']);
         $recentlyViewed = array_values(array_unique(array_merge([$auctionId], (array) $request->session()->get('recently_viewed_auctions', []))));
         $request->session()->put('recently_viewed_auctions', array_slice($recentlyViewed, 0, 20));
 
@@ -140,6 +234,7 @@ class UserAuctionController extends Controller
             'currentBid' => $currentBid,
             'minNextBid' => $minNextBid,
             'recentBids' => $recentBids,
+            'myBidHistory' => $myBidHistory,
             'userHasBid' => $userHasBid,
             'isParticipant' => $isParticipant,
             'walletBalance' => $walletBalance,
@@ -147,6 +242,7 @@ class UserAuctionController extends Controller
             'requiredEmd' => $requiredEmd,
             'isWatchlisted' => $isWatchlisted,
             'myHighestBid' => $myHighestBid,
+            'viewerUserId' => $userId,
         ]);
     }
 
@@ -345,80 +441,18 @@ class UserAuctionController extends Controller
         ]);
     }
 
-    public function wonAuctions(Request $request)
-    {
-        $this->updateAuctionStatuses();
-        $userId = (int) $request->session()->get('user_id');
-        $payment = (string) $request->query('payment', 'all');
-        $status = (string) $request->query('status', 'all');
-        $search = trim((string) $request->query('search', ''));
-        $dateFrom = (string) $request->query('date_from', '');
-        $dateTo = (string) $request->query('date_to', '');
-
-        $perPage = $this->resolvePerPage($request, 20);
-        $wonAuctionsQuery = DB::table('auctions')
-            ->where('winner_user_id', $userId)
-            ->whereIn('status', ['closed', 'completed'])
-            ->when($payment !== 'all', fn ($q) => $q->where('payment_status', $payment))
-            ->when($status !== 'all', fn ($q) => $q->where('status', $status))
-            ->when($search !== '', fn ($q) => $q->where('title', 'like', '%' . $search . '%'))
-            ->when($dateFrom !== '', fn ($q) => $q->whereDate('end_datetime', '>=', $dateFrom))
-            ->when($dateTo !== '', fn ($q) => $q->whereDate('end_datetime', '<=', $dateTo))
-            ->orderByDesc('end_datetime');
-        $wonAuctions = $this->paginateQuery($wonAuctionsQuery, $perPage);
-
-        return view('user.won-auctions', [
-            'wonAuctions' => $wonAuctions,
-            'filters' => [
-                'payment' => $payment,
-                'status' => $status,
-                'search' => $search,
-                'date_from' => $dateFrom,
-                'date_to' => $dateTo,
-                'per_page' => (string) $request->query('per_page', (string) $perPage),
-            ],
-        ]);
-    }
-
-    public function lostAuctions(Request $request)
-    {
-        $this->updateAuctionStatuses();
-        $userId = (int) $request->session()->get('user_id');
-        $search = trim((string) $request->query('search', ''));
-        $perPage = $this->resolvePerPage($request, 20);
-
-        $lostQuery = DB::table('auctions as a')
-            ->whereIn('a.status', ['closed', 'completed'])
-            ->whereExists(function ($q) use ($userId): void {
-                $q->select(DB::raw(1))
-                    ->from('bids as b')
-                    ->whereColumn('b.auction_id', 'a.id')
-                    ->where('b.user_id', $userId);
-            })
-            ->where(function ($q) use ($userId): void {
-                $q->whereNull('a.winner_user_id')->orWhere('a.winner_user_id', '<>', $userId);
-            })
-            ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%' . $search . '%'))
-            ->selectRaw("a.*, (SELECT MAX(amount) FROM bids WHERE auction_id = a.id) as winning_bid,
-                (SELECT MAX(amount) FROM bids WHERE auction_id = a.id AND user_id = {$userId}) as my_highest_bid")
-            ->orderByDesc('a.end_datetime');
-
-        $lostAuctions = $this->paginateQuery($lostQuery, $perPage);
-
-        return view('user.lost-auctions', [
-            'lostAuctions' => $lostAuctions,
-            'search' => $search,
-            'perPage' => (string) $request->query('per_page', (string) $perPage),
-        ]);
-    }
-
     public function notifications(Request $request)
     {
         $userId = (int) $request->session()->get('user_id');
         $threads = collect();
-        $selectedThread = null;
-        $selectedReplies = collect();
         $unreadCount = 0;
+        $notificationGroups = [];
+        $totalMessages = 0;
+        $filter = (string) $request->query('filter', 'all');
+        if (! in_array($filter, ['all', 'unread', 'auctions', 'payments', 'system'], true)) {
+            $filter = 'all';
+        }
+        $searchQ = trim((string) $request->query('q', ''));
 
         if (Schema::hasTable('admin_messages') && Schema::hasTable('admin_message_recipients')) {
             $threads = DB::table('admin_message_recipients as r')
@@ -438,6 +472,7 @@ class UserAuctionController extends Controller
                     'r.is_read',
                     'r.last_read_at',
                 ]);
+            $totalMessages = $threads->count();
 
             $unreadCount = DB::table('admin_message_recipients')
                 ->where('user_id', $userId)
@@ -448,74 +483,100 @@ class UserAuctionController extends Controller
                 DB::table('admin_message_recipients')
                     ->where('user_id', $userId)
                     ->update(['is_read' => 1, 'last_read_at' => now(), 'updated_at' => now()]);
-                return redirect()->route('user.notifications');
+
+                return redirect()->route('user.notifications', $request->except('mark_read'));
             }
 
-            $selectedThreadId = (int) $request->query('thread', 0);
-            if ($selectedThreadId > 0) {
-                $selectedThread = $threads->firstWhere('id', $selectedThreadId);
-                if ($selectedThread) {
-                    DB::table('admin_message_recipients')
-                        ->where('message_id', $selectedThreadId)
-                        ->where('user_id', $userId)
-                        ->update(['is_read' => 1, 'last_read_at' => now(), 'updated_at' => now()]);
+            $threads->transform(function ($t) {
+                $t->notif_kind = $this->inferNotificationKind($t);
 
-                    $selectedReplies = Schema::hasTable('admin_message_replies')
-                        ? DB::table('admin_message_replies')
-                            ->where('message_id', $selectedThreadId)
-                            ->orderBy('created_at')
-                            ->get()
-                        : collect();
+                return $t;
+            });
+
+            $threads = $threads->filter(function ($t) use ($filter, $searchQ) {
+                $combined = strtolower((string) ($t->subject ?? '') . ' ' . ($t->message ?? ''));
+                if ($searchQ !== '' && ! str_contains($combined, strtolower($searchQ))) {
+                    return false;
                 }
-            }
+                $kind = $t->notif_kind ?? 'system';
+
+                return match ($filter) {
+                    'unread' => (int) $t->is_read === 0,
+                    'auctions' => in_array($kind, ['auction', 'outbid', 'winning'], true),
+                    'payments' => $kind === 'payment',
+                    'system' => $kind === 'system',
+                    default => true,
+                };
+            })->values();
+
+            $notificationGroups = $this->groupNotificationsByDay($threads);
         }
 
-        return view('user.notifications', compact('threads', 'selectedThread', 'selectedReplies', 'unreadCount'));
+        return view('user.notifications', compact(
+            'unreadCount',
+            'notificationGroups',
+            'filter',
+            'searchQ',
+            'totalMessages'
+        ));
     }
 
-    public function support(Request $request)
+    public function notificationShow(Request $request, int $id)
     {
         $userId = (int) $request->session()->get('user_id');
-        if (! Schema::hasTable('support_tickets')) {
-            return view('user.support', ['tickets' => collect(), 'setupMissing' => true]);
+
+        if (! Schema::hasTable('admin_messages') || ! Schema::hasTable('admin_message_recipients')) {
+            return redirect()->route('user.notifications')->withErrors(['message' => 'Messaging feature is not ready.']);
         }
 
-        if ($request->isMethod('post')) {
-            $validated = $request->validate([
-                'subject' => ['required', 'string', 'max:255'],
-                'message' => ['required', 'string', 'max:5000'],
-                'priority' => ['nullable', 'in:low,normal,high'],
-                'category' => ['nullable', 'string', 'max:50'],
-                'attachment' => ['nullable', 'file', 'max:10240'],
-            ]);
-
-            $attachmentPath = null;
-            if ($request->hasFile('attachment')) {
-                $attachmentPath = $request->file('attachment')->store('support-tickets', 'public');
-            }
-
-            DB::table('support_tickets')->insert([
-                'user_id' => $userId,
-                'subject' => trim((string) $validated['subject']),
-                'message' => trim((string) $validated['message']),
-                'status' => 'open',
-                'priority' => (string) ($validated['priority'] ?? 'normal'),
-                'category' => trim((string) ($validated['category'] ?? '')),
-                'attachment_path' => $attachmentPath,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            return redirect()->route('user.support')->with('success', 'Ticket submitted successfully.');
-        }
-
-        $tickets = DB::table('support_tickets')
+        $hasAccess = DB::table('admin_message_recipients')
+            ->where('message_id', $id)
             ->where('user_id', $userId)
-            ->orderByDesc('created_at')
-            ->limit(100)
-            ->get();
+            ->exists();
+        if (! $hasAccess) {
+            abort(404);
+        }
 
-        return view('user.support', ['tickets' => $tickets, 'setupMissing' => false]);
+        $selectedThread = DB::table('admin_messages as m')
+            ->leftJoin('users as cu', 'cu.id', '=', 'm.created_by')
+            ->where('m.id', $id)
+            ->select([
+                'm.id',
+                'm.subject',
+                'm.message',
+                'm.attachment_path',
+                'm.created_at',
+                'm.created_by',
+                'cu.name as created_by_name',
+                'cu.role as created_by_role',
+            ])
+            ->first();
+
+        if (! $selectedThread) {
+            abort(404);
+        }
+
+        DB::table('admin_message_recipients')
+            ->where('message_id', $id)
+            ->where('user_id', $userId)
+            ->update(['is_read' => 1, 'last_read_at' => now(), 'updated_at' => now()]);
+
+        $selectedReplies = Schema::hasTable('admin_message_replies')
+            ? DB::table('admin_message_replies')
+                ->where('message_id', $id)
+                ->orderBy('created_at')
+                ->get()
+            : collect();
+
+        return view('user.notifications.show', [
+            'selectedThread' => $selectedThread,
+            'selectedReplies' => $selectedReplies,
+        ]);
+    }
+
+    public function notificationComposeForm()
+    {
+        return view('user.notifications.compose');
     }
 
     public function composeAdminMessage(Request $request)
@@ -555,7 +616,7 @@ class UserAuctionController extends Controller
             'updated_at' => now(),
         ]);
 
-        return redirect()->route('user.notifications', ['thread' => $messageId])->with('success', 'Message sent to admin.');
+        return redirect()->route('user.notifications.show', $messageId)->with('success', 'Message sent to admin.');
     }
 
     public function replyToAdminMessage(Request $request, int $id)
@@ -598,7 +659,7 @@ class UserAuctionController extends Controller
             ->where('user_id', $userId)
             ->update(['is_read' => 1, 'last_read_at' => now(), 'updated_at' => now()]);
 
-        return back()->with('success', 'Reply sent to admin.');
+        return redirect()->route('user.notifications.show', $id)->with('success', 'Reply sent to admin.');
     }
 
     public function profile(Request $request)
@@ -844,5 +905,47 @@ class UserAuctionController extends Controller
             $perPage = max(1, $total);
         }
         return $query->paginate((int) $perPage)->withQueryString();
+    }
+
+    private function inferNotificationKind(object $thread): string
+    {
+        $s = strtolower((string) ($thread->subject ?? '') . ' ' . ($thread->message ?? ''));
+        if (preg_match('/outbid|out-bid|out bid|been outbid/i', $s)) {
+            return 'outbid';
+        }
+        if (preg_match('/\b(you won|you\'?re winning|winner|congratulations|winning bid)\b/i', $s)) {
+            return 'winning';
+        }
+        if (preg_match('/\b(payment|invoice|fee due|pay now|payable|reminder.*pay|complete payment)\b/i', $s)) {
+            return 'payment';
+        }
+        if (preg_match('/\b(auction|bid on|place bid|domain|lot\b|highest bid)\b/i', $s)) {
+            return 'auction';
+        }
+
+        return 'system';
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, object>  $threads
+     * @return array<int, array{label: string, items: \Illuminate\Support\Collection}>
+     */
+    private function groupNotificationsByDay($threads): array
+    {
+        $groups = [];
+        $byDate = $threads->groupBy(fn ($t) => Carbon::parse($t->created_at)->format('Y-m-d'));
+        foreach ($byDate->sortKeysDesc() as $dateKey => $items) {
+            $d = Carbon::parse($dateKey);
+            if ($d->isToday()) {
+                $label = 'Today';
+            } elseif ($d->isYesterday()) {
+                $label = 'Yesterday';
+            } else {
+                $label = $d->format('d M Y');
+            }
+            $groups[] = ['label' => $label, 'items' => $items];
+        }
+
+        return $groups;
     }
 }

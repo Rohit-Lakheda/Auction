@@ -4,13 +4,19 @@
 
 @section('content')
     @if (session('success'))
-        <div class="alert alert-success">✓ {{ session('success') }}</div>
+        <div class="alert-show alert-show-success">
+            <span class="alert-keyword">Success.</span><span class="alert-body">{{ session('success') }}</span>
+        </div>
     @endif
     @if (session('error'))
-        <div class="alert alert-error">✗ {{ session('error') }}</div>
+        <div class="alert-show alert-show-error">
+            <span class="alert-keyword">Error.</span><span class="alert-body">{{ session('error') }}</span>
+        </div>
     @endif
     @if ($errors->any())
-        <div class="alert alert-error">{{ $errors->first() }}</div>
+        <div class="alert-show alert-show-error">
+            <span class="alert-keyword">Error.</span><span class="alert-body">{{ $errors->first() }}</span>
+        </div>
     @endif
 
     <div class="card">

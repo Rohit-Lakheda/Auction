@@ -53,11 +53,13 @@ Route::middleware('session.auth')->group(function (): void {
     // [EMD DISABLED] Route::post('/user/auctions/{auctionId}/complete-payment', [UserAuctionController::class, 'completePayment'])->name('user.auctions.complete-payment');
     // [EMD DISABLED] Route::post('/user/auctions/{auctionId}/release-emd', [UserAuctionController::class, 'releaseEmd'])->name('user.auctions.release-emd');
     Route::get('/user/my-bids', [UserAuctionController::class, 'myBids'])->name('user.my-bids');
-    Route::get('/user/won-auctions', [UserAuctionController::class, 'wonAuctions'])->name('user.won-auctions');
-    Route::get('/user/lost-auctions', [UserAuctionController::class, 'lostAuctions'])->name('user.lost-auctions');
     Route::match(['get', 'post'], '/user/profile', [UserAuctionController::class, 'profile'])->name('user.profile');
     Route::get('/user/notifications', [UserAuctionController::class, 'notifications'])->name('user.notifications');
-    Route::match(['get', 'post'], '/user/support', [UserAuctionController::class, 'support'])->name('user.support');
+    Route::get('/user/notifications/new', [UserAuctionController::class, 'notificationComposeForm'])->name('user.notifications.new');
+    Route::get('/user/notifications/{id}', [UserAuctionController::class, 'notificationShow'])->whereNumber('id')->name('user.notifications.show');
+    Route::match(['get', 'post'], '/user/support', function () {
+        return redirect()->route('user.notifications.new', [], 302);
+    })->name('user.support');
     Route::post('/user/notifications/compose', [UserAuctionController::class, 'composeAdminMessage'])->name('user.notifications.compose');
     Route::post('/user/notifications/{id}/reply', [UserAuctionController::class, 'replyToAdminMessage'])->name('user.notifications.reply');
     // [EMD/WALLET DISABLED] Route::get('/wallet', [WalletController::class, 'index'])->name('wallet.index');
