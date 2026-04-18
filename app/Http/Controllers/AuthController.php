@@ -45,8 +45,12 @@ class AuthController extends Controller
             ]);
         }
 
+        $userColumns = ['id', 'name', 'email', 'password', 'role'];
+        if (Schema::hasColumn('users', 'is_blocked')) {
+            $userColumns[] = 'is_blocked';
+        }
         $user = DB::table('users')
-            ->select(['id', 'name', 'email', 'password', 'role'])
+            ->select($userColumns)
             ->where('email', $email)
             ->first();
 
@@ -80,6 +84,13 @@ class AuthController extends Controller
             DB::table('users')
                 ->where('id', $user->id)
                 ->update(['password' => Hash::make($validated['password'])]);
+        }
+
+        if (Schema::hasColumn('users', 'is_blocked') && isset($user->is_blocked) && (int) $user->is_blocked === 1) {
+            $this->logLoginAttempt($email, false, $request, 'account_blocked');
+            return back()->withInput($request->only('email'))->withErrors([
+                'email' => 'Your account has been blocked. Contact support.',
+            ]);
         }
 
         if (Schema::hasColumn('users', 'must_reset_password') && (int) (DB::table('users')->where('id', $user->id)->value('must_reset_password') ?? 0) === 1) {

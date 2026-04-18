@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\BulkSmsService;
+use App\Services\BlacklistService;
 use App\Services\EmdAuctionService;
 use App\Services\AppSettingsService;
 use Illuminate\Http\Request;
@@ -17,9 +19,10 @@ class UserAuctionController extends Controller
 {
     public function __construct(
         private readonly EmdAuctionService $emdAuctionService,
-        private readonly AppSettingsService $settingsService
-    )
-    {
+        private readonly AppSettingsService $settingsService,
+        private readonly BlacklistService $blacklistService,
+        private readonly BulkSmsService $bulkSmsService,
+    ) {
     }
 
     public function index(Request $request)
@@ -667,22 +670,6 @@ class UserAuctionController extends Controller
         $this->updateAuctionStatuses();
         $userId = (int) $request->session()->get('user_id');
 
-        if ($request->isMethod('post')) {
-            $validated = $request->validate([
-                'current_password' => ['required'],
-                'new_password' => ['required', 'min:8', 'same:confirm_password'],
-                'confirm_password' => ['required'],
-            ]);
-
-            $userPwd = DB::table('users')->where('id', $userId)->value('password');
-            if (! Hash::check($validated['current_password'], (string) $userPwd)) {
-                return back()->with('error', 'Current password is incorrect.');
-            }
-
-            DB::table('users')->where('id', $userId)->update(['password' => Hash::make($validated['new_password'])]);
-            return back()->with('success', 'Password updated successfully!');
-        }
-
         $user = DB::selectOne(
             "SELECT u.*, r.registration_id, r.registration_type, r.pan_card_number, r.mobile as reg_mobile, r.date_of_birth, r.payment_status, r.payment_date, r.payment_amount, r.payment_transaction_id
             FROM users u LEFT JOIN registration r ON u.email = r.email WHERE u.id = ?",
@@ -692,12 +679,481 @@ class UserAuctionController extends Controller
             return redirect()->route('user.auctions.index');
         }
 
-        $stats = [
-            'total_bids' => DB::table('bids')->where('user_id', $userId)->count(),
-            'won_auctions' => DB::table('auctions')->where('winner_user_id', $userId)->whereIn('status', ['closed', 'completed'])->count(),
-            'auctions_bid_on' => DB::table('bids')->where('user_id', $userId)->distinct('auction_id')->count('auction_id'),
-        ];
-        return view('user.profile', ['user' => $user, 'stats' => $stats]);
+        $this->syncProfileUiSectionWithPendingState($request, $userId);
+
+        return view('user.profile', ['user' => $user]);
+    }
+
+    public function profilePasswordSendOtp(Request $request)
+    {
+        $userId = (int) $request->session()->get('user_id');
+        $validated = $request->validate([
+            'current_password' => ['required', 'string'],
+        ]);
+
+        $userPwd = DB::table('users')->where('id', $userId)->value('password');
+        if (! Hash::check($validated['current_password'], (string) $userPwd)) {
+            $this->setProfileUiSection($request, 'password');
+
+            return back()->with('error', 'Current password is incorrect.')->withInput();
+        }
+
+        $user = DB::table('users')->where('id', $userId)->first();
+        if (! $user || empty($user->email)) {
+            $this->setProfileUiSection($request, 'password');
+
+            return back()->with('error', 'No email on file for OTP.');
+        }
+
+        $otp = (string) random_int(100000, 999999);
+        $request->session()->put('profile_pwd_otp_' . $userId, $otp);
+        $request->session()->put('profile_pwd_otp_time_' . $userId, time());
+
+        $this->sendProfileOtpEmail((string) $user->email, $otp, 'password change');
+
+        $this->setProfileUiSection($request, 'password');
+
+        return back()->with('success', 'A verification code was sent to your registered email.');
+    }
+
+    public function profilePasswordUpdate(Request $request)
+    {
+        $userId = (int) $request->session()->get('user_id');
+        $validated = $request->validate([
+            'otp' => ['required', 'digits:6'],
+            'new_password' => ['required', 'string', 'min:8', 'same:confirm_password'],
+            'confirm_password' => ['required', 'string'],
+        ]);
+
+        $storedOtp = (string) $request->session()->get('profile_pwd_otp_' . $userId, '');
+        $otpTime = (int) $request->session()->get('profile_pwd_otp_time_' . $userId, 0);
+        if (! $storedOtp || $storedOtp !== $validated['otp'] || (time() - $otpTime) > 600) {
+            $this->setProfileUiSection($request, 'password');
+
+            return back()->with('error', 'Invalid or expired verification code.')->withInput();
+        }
+
+        DB::table('users')->where('id', $userId)->update([
+            'password' => Hash::make($validated['new_password']),
+            'updated_at' => now(),
+        ]);
+
+        $request->session()->forget(['profile_pwd_otp_' . $userId, 'profile_pwd_otp_time_' . $userId]);
+        $this->clearProfileUiSection($request);
+        $this->logUserIdentityChange($userId, 'password', '[redacted]', '[password_changed]', $request);
+
+        return back()->with('success', 'Password updated successfully.');
+    }
+
+    public function profileEmailSendOtp(Request $request)
+    {
+        $userId = (int) $request->session()->get('user_id');
+        $validated = $request->validate([
+            'new_email' => ['required', 'email'],
+        ]);
+        $newEmail = strtolower(trim($validated['new_email']));
+        $user = DB::table('users')->where('id', $userId)->first();
+        if (! $user) {
+            $this->setProfileUiSection($request, 'email');
+
+            return back()->with('error', 'User not found.');
+        }
+        $oldEmail = strtolower(trim((string) $user->email));
+        if ($newEmail === $oldEmail) {
+            $this->setProfileUiSection($request, 'email');
+
+            return back()->with('error', 'That is already your email address.')->withInput();
+        }
+
+        if ($this->blacklistService->isIdentityBlocked([
+            'email' => $newEmail,
+            'ip_address' => $request->ip(),
+            'device_fingerprint' => $this->blacklistService->getFingerprint($request),
+        ])) {
+            $this->setProfileUiSection($request, 'email');
+
+            return back()->with('error', 'This email cannot be used.')->withInput();
+        }
+
+        if (! $this->emailAvailableForProfile($newEmail, $userId)) {
+            $this->setProfileUiSection($request, 'email');
+
+            return back()->with('error', 'This email is already registered.')->withInput();
+        }
+
+        $otp = (string) random_int(100000, 999999);
+        $request->session()->put('profile_email_otp_' . md5($newEmail), $otp);
+        $request->session()->put('profile_email_otp_time_' . md5($newEmail), time());
+        $request->session()->put('profile_email_pending_' . $userId, $newEmail);
+
+        $this->sendProfileOtpEmail($newEmail, $otp, 'email change');
+
+        $this->setProfileUiSection($request, 'email');
+
+        return back()->with('success', 'A verification code was sent to the new email address.')->withInput();
+    }
+
+    public function profileEmailUpdate(Request $request)
+    {
+        $userId = (int) $request->session()->get('user_id');
+        $validated = $request->validate([
+            'otp' => ['required', 'digits:6'],
+        ]);
+
+        $pending = strtolower(trim((string) $request->session()->get('profile_email_pending_' . $userId, '')));
+        if ($pending === '' || ! filter_var($pending, FILTER_VALIDATE_EMAIL)) {
+            $this->setProfileUiSection($request, 'email');
+
+            return back()->with('error', 'No pending email change. Request a new code first.');
+        }
+
+        $storedOtp = (string) $request->session()->get('profile_email_otp_' . md5($pending), '');
+        $otpTime = (int) $request->session()->get('profile_email_otp_time_' . md5($pending), 0);
+        if (! $storedOtp || $storedOtp !== $validated['otp'] || (time() - $otpTime) > 600) {
+            $this->setProfileUiSection($request, 'email');
+
+            return back()->with('error', 'Invalid or expired verification code.')->withInput();
+        }
+
+        $user = DB::table('users')->where('id', $userId)->first();
+        if (! $user) {
+            $this->setProfileUiSection($request, 'email');
+
+            return back()->with('error', 'User not found.');
+        }
+        $oldEmail = strtolower(trim((string) $user->email));
+
+        if (! $this->emailAvailableForProfile($pending, $userId)) {
+            $this->setProfileUiSection($request, 'email');
+
+            return back()->with('error', 'This email is no longer available.');
+        }
+
+        DB::table('users')->where('id', $userId)->update([
+            'email' => $pending,
+            'updated_at' => now(),
+        ]);
+
+        if (Schema::hasTable('registration')) {
+            DB::table('registration')->where('email', $oldEmail)->update([
+                'email' => $pending,
+                'updated_at' => now(),
+            ]);
+        }
+
+        $this->logUserIdentityChange($userId, 'email', $oldEmail, $pending, $request);
+        $request->session()->put('email', $pending);
+        $request->session()->forget([
+            'profile_email_otp_' . md5($pending),
+            'profile_email_otp_time_' . md5($pending),
+            'profile_email_pending_' . $userId,
+        ]);
+        $this->clearProfileUiSection($request);
+
+        return back()->with('success', 'Email address updated successfully.');
+    }
+
+    public function profileMobileSendOtp(Request $request)
+    {
+        $userId = (int) $request->session()->get('user_id');
+        $validated = $request->validate([
+            'new_mobile' => ['required', 'digits:10'],
+        ]);
+        $newMobile = $this->normalizeMobileDigits((string) $validated['new_mobile']);
+
+        $user = DB::table('users')->where('id', $userId)->first();
+        if (! $user) {
+            $this->setProfileUiSection($request, 'mobile');
+
+            return back()->with('error', 'User not found.');
+        }
+
+        $oldMobile = null;
+        if (Schema::hasColumn('users', 'mobile') && ! empty($user->mobile)) {
+            $oldMobile = $this->normalizeMobileDigits((string) $user->mobile);
+        }
+        $reg = Schema::hasTable('registration')
+            ? DB::table('registration')->where('email', $user->email)->first()
+            : null;
+        if ($oldMobile === null && $reg && ! empty($reg->mobile)) {
+            $oldMobile = $this->normalizeMobileDigits((string) $reg->mobile);
+        }
+
+        if ($newMobile === $oldMobile) {
+            $this->setProfileUiSection($request, 'mobile');
+
+            return back()->with('error', 'That is already your mobile number.')->withInput();
+        }
+
+        if ($this->blacklistService->isIdentityBlocked([
+            'mobile' => $newMobile,
+            'ip_address' => $request->ip(),
+            'device_fingerprint' => $this->blacklistService->getFingerprint($request),
+        ])) {
+            $this->setProfileUiSection($request, 'mobile');
+
+            return back()->with('error', 'This mobile number cannot be used.')->withInput();
+        }
+
+        if (! $this->mobileAvailableForProfile($newMobile, $userId, $oldMobile)) {
+            $this->setProfileUiSection($request, 'mobile');
+
+            return back()->with('error', 'This mobile number is already registered.')->withInput();
+        }
+
+        $otp = (string) random_int(100000, 999999);
+        $request->session()->put('profile_mobile_otp_' . md5($newMobile), $otp);
+        $request->session()->put('profile_mobile_otp_time_' . md5($newMobile), time());
+        $request->session()->put('profile_mobile_pending_' . $userId, $newMobile);
+
+        if (config('sms.enabled')) {
+            if (! $this->bulkSmsService->sendOtp($newMobile, $otp)) {
+                Log::warning('Profile mobile OTP: SMS send failed (see BulkSms logs above for HTTP/config details)', [
+                    'user_id' => $userId,
+                    'mobile_last4' => substr($newMobile, -4),
+                ]);
+                $this->setProfileUiSection($request, 'mobile');
+
+                return back()->with('error', 'Could not send SMS. Please try again later.')->withInput();
+            }
+
+            $this->setProfileUiSection($request, 'mobile');
+
+            return back()->with('success', 'Verification code sent to your mobile.')->withInput();
+        }
+
+        $msg = 'SMS gateway is disabled. ';
+        if (config('app.debug')) {
+            $msg .= 'Dev OTP: ' . $otp;
+        } else {
+            $msg .= 'Configure SMS_BULK_* in .env to send real SMS.';
+        }
+
+        $this->setProfileUiSection($request, 'mobile');
+
+        return back()->with('success', $msg)->withInput();
+    }
+
+    public function profileMobileUpdate(Request $request)
+    {
+        $userId = (int) $request->session()->get('user_id');
+        $validated = $request->validate([
+            'otp' => ['required', 'digits:6'],
+        ]);
+
+        $pending = (string) $request->session()->get('profile_mobile_pending_' . $userId, '');
+        $pending = $this->normalizeMobileDigits($pending);
+        if (strlen($pending) !== 10) {
+            $this->setProfileUiSection($request, 'mobile');
+
+            return back()->with('error', 'No pending mobile change. Request a new code first.');
+        }
+
+        $storedOtp = (string) $request->session()->get('profile_mobile_otp_' . md5($pending), '');
+        $otpTime = (int) $request->session()->get('profile_mobile_otp_time_' . md5($pending), 0);
+        if (! $storedOtp || $storedOtp !== $validated['otp'] || (time() - $otpTime) > 600) {
+            $this->setProfileUiSection($request, 'mobile');
+
+            return back()->with('error', 'Invalid or expired verification code.')->withInput();
+        }
+
+        $user = DB::table('users')->where('id', $userId)->first();
+        if (! $user) {
+            $this->setProfileUiSection($request, 'mobile');
+
+            return back()->with('error', 'User not found.');
+        }
+
+        $oldMobile = null;
+        if (Schema::hasColumn('users', 'mobile') && ! empty($user->mobile)) {
+            $oldMobile = $this->normalizeMobileDigits((string) $user->mobile);
+        }
+        $reg = Schema::hasTable('registration')
+            ? DB::table('registration')->where('email', $user->email)->first()
+            : null;
+        if ($oldMobile === null && $reg && ! empty($reg->mobile)) {
+            $oldMobile = $this->normalizeMobileDigits((string) $reg->mobile);
+        }
+
+        if (! $this->mobileAvailableForProfile($pending, $userId, $oldMobile)) {
+            $this->setProfileUiSection($request, 'mobile');
+
+            return back()->with('error', 'This mobile number is no longer available.');
+        }
+
+        if (Schema::hasColumn('users', 'mobile')) {
+            DB::table('users')->where('id', $userId)->update([
+                'mobile' => $pending,
+                'updated_at' => now(),
+            ]);
+        }
+
+        if (Schema::hasTable('registration')) {
+            DB::table('registration')->where('email', $user->email)->update([
+                'mobile' => $pending,
+                'updated_at' => now(),
+            ]);
+        }
+
+        $this->logUserIdentityChange($userId, 'mobile', $oldMobile ?? '', $pending, $request);
+        $request->session()->forget([
+            'profile_mobile_otp_' . md5($pending),
+            'profile_mobile_otp_time_' . md5($pending),
+            'profile_mobile_pending_' . $userId,
+        ]);
+        $this->clearProfileUiSection($request);
+
+        return back()->with('success', 'Mobile number updated successfully.');
+    }
+
+    private function setProfileUiSection(Request $request, string $section): void
+    {
+        $request->session()->put('profile_ui_section', $section);
+    }
+
+    private function clearProfileUiSection(Request $request): void
+    {
+        $request->session()->forget('profile_ui_section');
+    }
+
+    /**
+     * Collapse profile accordion when stored UI section no longer matches session (e.g. stale pending mobile).
+     */
+    private function syncProfileUiSectionWithPendingState(Request $request, int $userId): void
+    {
+        $ui = $request->session()->get('profile_ui_section');
+        if ($ui !== 'password' && $ui !== 'email' && $ui !== 'mobile') {
+            if ($ui !== null) {
+                $request->session()->forget('profile_ui_section');
+            }
+
+            return;
+        }
+        if ($ui === 'mobile') {
+            $raw = $request->session()->get('profile_mobile_pending_' . $userId);
+            $norm = preg_replace('/\D/', '', (string) $raw);
+            if (strlen($norm) !== 10) {
+                $request->session()->forget('profile_ui_section');
+            }
+        } elseif ($ui === 'email') {
+            $e = $request->session()->get('profile_email_pending_' . $userId);
+            if (! is_string($e) || ! filter_var($e, FILTER_VALIDATE_EMAIL)) {
+                $request->session()->forget('profile_ui_section');
+            }
+        } elseif ($ui === 'password') {
+            if (! $request->session()->has('profile_pwd_otp_' . $userId)) {
+                $request->session()->forget('profile_ui_section');
+            }
+        }
+    }
+
+    private function logUserIdentityChange(int $userId, string $field, ?string $old, ?string $new, Request $request): void
+    {
+        if (! Schema::hasTable('user_identity_change_logs')) {
+            return;
+        }
+        DB::table('user_identity_change_logs')->insert([
+            'user_id' => $userId,
+            'field_name' => $field,
+            'old_value' => $old,
+            'new_value' => $new,
+            'ip_address' => $request->ip(),
+            'created_at' => now(),
+        ]);
+    }
+
+    private function emailAvailableForProfile(string $newEmail, int $userId): bool
+    {
+        if (DB::table('users')->where('email', $newEmail)->where('id', '!=', $userId)->exists()) {
+            return false;
+        }
+        if (Schema::hasTable('registration') && DB::table('registration')->where('email', $newEmail)->exists()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function mobileAvailableForProfile(string $newMobile, int $userId, ?string $oldMobile): bool
+    {
+        if (Schema::hasColumn('users', 'mobile')) {
+            if (DB::table('users')->where('mobile', $newMobile)->where('id', '!=', $userId)->exists()) {
+                return false;
+            }
+        }
+        if (Schema::hasTable('registration')) {
+            $user = DB::table('users')->where('id', $userId)->first();
+            if (! $user) {
+                return false;
+            }
+            $conflict = DB::table('registration')
+                ->where('mobile', $newMobile)
+                ->where('email', '!=', $user->email)
+                ->exists();
+            if ($conflict) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function normalizeMobileDigits(string $mobile): string
+    {
+        return preg_replace('/[^0-9]/', '', trim($mobile)) ?? '';
+    }
+
+    private function sendProfileOtpEmail(string $email, string $otp, string $purpose): void
+    {
+        try {
+            $this->applyActiveAdminEmailSettingsForProfileOtp();
+            Mail::mailer('smtp')->raw("Your OTP for {$purpose} is: {$otp}\n\nThis code expires in 10 minutes.", static function ($message) use ($email, $purpose): void {
+                $message->to($email)->subject('Profile verification OTP');
+            });
+        } catch (\Throwable) {
+            // Mail failure ignored; dev may rely on flash for mobile OTP
+        }
+    }
+
+    private function applyActiveAdminEmailSettingsForProfileOtp(): void
+    {
+        try {
+            if (! Schema::hasTable('email_settings')) {
+                return;
+            }
+
+            $settings = DB::table('email_settings')
+                ->where('is_active', 1)
+                ->latest('updated_at')
+                ->first();
+
+            if (! $settings) {
+                return;
+            }
+
+            $encryption = strtolower(trim((string) ($settings->encryption ?? '')));
+            $smtpScheme = match ($encryption) {
+                'ssl' => 'smtps',
+                'tls', '' => 'smtp',
+                default => 'smtp',
+            };
+
+            config([
+                'mail.default' => 'smtp',
+                'mail.mailers.smtp.host' => (string) ($settings->smtp_host ?? config('mail.mailers.smtp.host')),
+                'mail.mailers.smtp.port' => (int) ($settings->smtp_port ?? config('mail.mailers.smtp.port')),
+                'mail.mailers.smtp.username' => (string) ($settings->smtp_username ?? config('mail.mailers.smtp.username')),
+                'mail.mailers.smtp.password' => (string) ($settings->smtp_password ?? config('mail.mailers.smtp.password')),
+                'mail.mailers.smtp.scheme' => $smtpScheme,
+                'mail.mailers.smtp.timeout' => 10,
+                'mail.from.address' => (string) ($settings->from_email ?? config('mail.from.address')),
+                'mail.from.name' => (string) ($settings->from_name ?? config('mail.from.name')),
+            ]);
+
+            Mail::purge('smtp');
+        } catch (\Throwable) {
+            // keep defaults
+        }
     }
 
     private function getCurrentHighestBid(int $auctionId): float

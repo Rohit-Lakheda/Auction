@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\AppSettingsService;
+use App\Services\BlacklistService;
 use Carbon\Carbon;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
@@ -13,8 +14,10 @@ use Illuminate\Support\Facades\Schema;
 
 class AdminController extends Controller
 {
-    public function __construct(private readonly AppSettingsService $settingsService)
-    {
+    public function __construct(
+        private readonly AppSettingsService $settingsService,
+        private readonly BlacklistService $blacklistService,
+    ) {
     }
 
     public function dashboard(Request $request)
@@ -808,6 +811,11 @@ class AdminController extends Controller
         }
         $newState = (int) ($user->is_blocked ?? 0) === 1 ? 0 : 1;
         DB::table('users')->where('id', $id)->update(['is_blocked' => $newState, 'updated_at' => now()]);
+        if ($newState === 1) {
+            $this->blacklistService->blacklistAllKnownIdentitiesForUser($id, 'Admin blocked user');
+        } else {
+            $this->blacklistService->deactivateBlacklistForUserId($id);
+        }
         return back()->with('success', $newState === 1 ? 'User blocked successfully.' : 'User unblocked successfully.');
     }
 

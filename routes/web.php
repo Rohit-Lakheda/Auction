@@ -53,7 +53,13 @@ Route::middleware('session.auth')->group(function (): void {
     // [EMD DISABLED] Route::post('/user/auctions/{auctionId}/complete-payment', [UserAuctionController::class, 'completePayment'])->name('user.auctions.complete-payment');
     // [EMD DISABLED] Route::post('/user/auctions/{auctionId}/release-emd', [UserAuctionController::class, 'releaseEmd'])->name('user.auctions.release-emd');
     Route::get('/user/my-bids', [UserAuctionController::class, 'myBids'])->name('user.my-bids');
-    Route::match(['get', 'post'], '/user/profile', [UserAuctionController::class, 'profile'])->name('user.profile');
+    Route::get('/user/profile', [UserAuctionController::class, 'profile'])->name('user.profile');
+    Route::post('/user/profile/password/send-otp', [UserAuctionController::class, 'profilePasswordSendOtp'])->name('user.profile.password.send-otp');
+    Route::post('/user/profile/password/update', [UserAuctionController::class, 'profilePasswordUpdate'])->name('user.profile.password.update');
+    Route::post('/user/profile/email/send-otp', [UserAuctionController::class, 'profileEmailSendOtp'])->name('user.profile.email.send-otp');
+    Route::post('/user/profile/email/update', [UserAuctionController::class, 'profileEmailUpdate'])->name('user.profile.email.update');
+    Route::post('/user/profile/mobile/send-otp', [UserAuctionController::class, 'profileMobileSendOtp'])->name('user.profile.mobile.send-otp');
+    Route::post('/user/profile/mobile/update', [UserAuctionController::class, 'profileMobileUpdate'])->name('user.profile.mobile.update');
     Route::get('/user/notifications', [UserAuctionController::class, 'notifications'])->name('user.notifications');
     Route::get('/user/notifications/new', [UserAuctionController::class, 'notificationComposeForm'])->name('user.notifications.new');
     Route::get('/user/notifications/{id}', [UserAuctionController::class, 'notificationShow'])->whereNumber('id')->name('user.notifications.show');

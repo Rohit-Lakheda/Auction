@@ -3,7 +3,7 @@
 @section('content')
 <div class="card">
     <h2>Admin Notifications</h2>
-    <p style="color:#6c757d;">Send message + email to selected users with attachment, and manage reply threads.</p>
+    <p style="color:#6c757d;">Send message + email to selected users with attachment. Each user gets a <strong>private 1:1 thread</strong> (bulk sends create one conversation per user, not one shared thread).</p>
     @if(session('success'))<div class="alert alert-success" style="margin-top:10px;">{{ session('success') }}</div>@endif
     @if($errors->any())<div class="alert alert-error" style="margin-top:10px;">{{ $errors->first() }}</div>@endif
     @if(!empty($setupMissing))
@@ -86,14 +86,20 @@
     @else
         <div style="overflow:auto;">
             <table>
-                <thead><tr><th>Subject</th><th>Message Preview</th><th>Started By</th><th>Recipients</th><th>Replies</th><th>Sent At</th><th>Action</th></tr></thead>
+                <thead><tr><th>Subject</th><th>Message Preview</th><th>Started By</th><th>Recipient</th><th>Replies</th><th>Sent At</th><th>Action</th></tr></thead>
                 <tbody>
                 @foreach($threads as $t)
                     <tr>
                         <td>{{ $t->subject ?: 'No Subject' }}</td>
                         <td>{{ \Illuminate\Support\Str::limit($t->message, 90) }}</td>
                         <td>{{ strtoupper((string)($t->created_by_role ?? 'admin')) }}{{ !empty($t->created_by_name) ? ' - '.$t->created_by_name : '' }}</td>
-                        <td>{{ (int)$t->recipient_count }}</td>
+                        <td>
+                            @if((int)($t->recipient_count ?? 0) > 1)
+                                <span title="Legacy bulk thread">{{ (int)$t->recipient_count }} users</span>
+                            @else
+                                {{ $t->recipient_name ?: '—' }}@if(!empty($t->recipient_email))<br><small style="color:#6c757d;">{{ $t->recipient_email }}</small>@endif
+                            @endif
+                        </td>
                         <td>{{ (int)$t->reply_count }}</td>
                         <td>{{ \Carbon\Carbon::parse($t->created_at)->format('d-M-Y H:i') }}</td>
                         <td><a href="{{ route('admin.notifications.thread', $t->id) }}" class="btn btn-secondary" style="padding:5px 10px;font-size:12px;">Open Thread</a></td>

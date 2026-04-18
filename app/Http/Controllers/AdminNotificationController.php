@@ -26,13 +26,16 @@ class AdminNotificationController extends Controller
             ->get(['id', 'name', 'email', 'is_blocked', 'default_count']);
 
         $threads = DB::table('admin_messages as m')
-            ->leftJoin('admin_message_recipients as r', 'r.message_id', '=', 'm.id')
-            ->leftJoin('admin_message_replies as ar', 'ar.message_id', '=', 'm.id')
             ->leftJoin('users as cu', 'cu.id', '=', 'm.created_by')
-            ->selectRaw('m.id, m.subject, m.message, m.attachment_path, m.created_at, cu.name as created_by_name, cu.role as created_by_role, COUNT(DISTINCT r.user_id) as recipient_count, COUNT(DISTINCT ar.id) as reply_count')
+            ->leftJoin('admin_message_recipients as r', 'r.message_id', '=', 'm.id')
+            ->leftJoin('users as ru', 'ru.id', '=', 'r.user_id')
+            ->leftJoin('admin_message_replies as ar', 'ar.message_id', '=', 'm.id')
+            ->selectRaw('m.id, m.subject, m.message, m.attachment_path, m.created_at, cu.name as created_by_name, cu.role as created_by_role,
+                MAX(ru.name) as recipient_name, MAX(ru.email) as recipient_email,
+                COUNT(DISTINCT r.user_id) as recipient_count, COUNT(DISTINCT ar.id) as reply_count')
             ->groupBy('m.id', 'm.subject', 'm.message', 'm.attachment_path', 'm.created_at', 'cu.name', 'cu.role')
             ->orderByDesc('m.created_at')
-            ->limit(100)
+            ->limit(200)
             ->get();
 
         $stats = [
@@ -69,22 +72,26 @@ class AdminNotificationController extends Controller
             return redirect()->route('admin.notifications')->withErrors(['selected_users' => 'No recipients found for selected filter.']);
         }
 
-        DB::transaction(function () use ($validated, $attachmentPath, $request, $recipientIds): void {
-            $messageId = DB::table('admin_messages')->insertGetId([
-                'subject' => trim((string) ($validated['subject'] ?? '')),
-                'message' => trim((string) $validated['message']),
-                'attachment_path' => $attachmentPath,
-                'created_by' => (int) $request->session()->get('user_id'),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+        $subjectLine = trim((string) ($validated['subject'] ?? ''));
+        $bodyText = trim((string) $validated['message']);
 
+        DB::transaction(function () use ($subjectLine, $bodyText, $attachmentPath, $request, $recipientIds): void {
             $users = DB::table('users')
                 ->whereIn('id', $recipientIds->all())
                 ->where('role', 'user')
                 ->get(['id', 'email', 'name']);
 
             foreach ($users as $user) {
+                // One admin_messages row per recipient so each user has a private 1:1 thread (replies are not shared).
+                $messageId = DB::table('admin_messages')->insertGetId([
+                    'subject' => $subjectLine,
+                    'message' => $bodyText,
+                    'attachment_path' => $attachmentPath,
+                    'created_by' => (int) $request->session()->get('user_id'),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
                 DB::table('admin_message_recipients')->insert([
                     'message_id' => $messageId,
                     'user_id' => (int) $user->id,
@@ -97,15 +104,15 @@ class AdminNotificationController extends Controller
                 if (Schema::hasTable('notifications')) {
                     DB::table('notifications')->insert([
                         'user_id' => (int) $user->id,
-                        'message' => (string) $validated['message'],
+                        'message' => $bodyText,
                         'read_status' => 0,
                         'created_at' => now(),
                     ]);
                 }
 
                 try {
-                    Mail::raw((string) $validated['message'], function ($m) use ($user, $validated, $attachmentPath): void {
-                        $m->to($user->email)->subject((string) (($validated['subject'] ?? '') !== '' ? $validated['subject'] : 'Message from Auction Admin'));
+                    Mail::raw($bodyText, function ($m) use ($user, $subjectLine, $attachmentPath): void {
+                        $m->to($user->email)->subject($subjectLine !== '' ? $subjectLine : 'Message from Auction Admin');
                         if ($attachmentPath) {
                             $m->attach(storage_path('app/public/' . $attachmentPath));
                         }
@@ -116,7 +123,11 @@ class AdminNotificationController extends Controller
             }
         });
 
-        return redirect()->route('admin.notifications')->with('success', 'Message sent to selected users.');
+        $n = $recipientIds->count();
+
+        return redirect()->route('admin.notifications')->with('success', $n === 1
+            ? 'Message sent. This user has a private conversation thread.'
+            : "Message sent to {$n} users. Each has their own private conversation (not a shared thread).");
     }
 
     private function resolveRecipientIds(string $filter)

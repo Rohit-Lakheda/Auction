@@ -11,9 +11,58 @@
         body { font-family: 'Varela Round', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8f9fa; color: #111; line-height: 1.6; }
         input, select, textarea, button { font-family: 'Varela Round', sans-serif; }
         input::placeholder, textarea::placeholder { font-family: 'Varela Round', sans-serif; }
-        .app-shell { display: flex; min-height: 100vh; }
-        .sidebar { width: 280px; background: linear-gradient(180deg, #1a237e 0%, #283593 100%); color: white; padding: 20px 14px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
-        .sidebar-logo { display: flex; align-items: center; gap: 10px; padding: 8px 10px 18px; border-bottom: 1px solid rgba(255,255,255,0.2); margin-bottom: 14px; }
+        .app-shell {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            min-height: 100dvh;
+        }
+        @media (min-width: 992px) {
+            .app-shell { flex-direction: row; }
+        }
+        .sidebar {
+            width: 280px;
+            background: linear-gradient(180deg, #1a237e 0%, #283593 100%);
+            color: white;
+            padding: 20px 14px;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            height: 100dvh;
+            overflow-y: auto;
+            flex-shrink: 0;
+            -webkit-overflow-scrolling: touch;
+        }
+        .sidebar-top-row {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 14px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+        }
+        .sidebar-top-row .sidebar-logo { border: none; margin: 0; padding: 8px 0 0 10px; flex: 1; min-width: 0; }
+        .sidebar-close-btn {
+            display: none;
+            flex-shrink: 0;
+            width: 44px;
+            height: 44px;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.12);
+            color: #fff;
+            font-size: 20px;
+            cursor: pointer;
+        }
+        .sidebar-close-btn:hover { background: rgba(255,255,255,0.2); }
+        .sidebar-logo { display: flex; align-items: center; gap: 10px; }
+        @media (min-width: 992px) {
+            .sidebar-close-btn { display: none !important; }
+            .sidebar-top-row { padding-bottom: 18px; margin-bottom: 14px; }
+        }
         .sidebar-logo img { height: 44px; background: #fff; padding: 5px; border-radius: 10px; }
         .sidebar-wallet { background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; padding: 12px; margin: 10px 8px 14px; }
         .sidebar-wallet-label { font-size: 12px; opacity: 0.9; }
@@ -47,19 +96,36 @@
         }
         .logout-btn { background: #c62828; margin-top: 12px; }
         .logout-btn:hover { background: #b71c1c; }
-        .content-area { flex: 1; min-width: 0; }
+        .content-area { flex: 1; min-width: 0; width: 100%; }
         .topbar-mobile {
             display: none;
             background: linear-gradient(135deg, #1a237e 0%, #283593 100%);
             color: #fff;
             padding: 12px 14px;
+            padding-top: max(12px, env(safe-area-inset-top));
             align-items: center;
             justify-content: space-between;
             position: sticky;
             top: 0;
             z-index: 1001;
+            flex: 0 0 auto;
+            width: 100%;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.12);
         }
-        .hamburger-btn { background: transparent; border: none; color: #fff; font-size: 22px; cursor: pointer; }
+        .topbar-mobile .topbar-title { font-weight: 600; font-size: 16px; letter-spacing: 0.02em; }
+        .hamburger-btn {
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-size: 22px;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 10px;
+            line-height: 1;
+        }
+        .hamburger-btn:hover { background: rgba(255,255,255,0.12); }
+        .hamburger-btn:focus-visible { outline: 2px solid rgba(255,255,255,0.6); outline-offset: 2px; }
+        body.drawer-open { overflow: hidden; touch-action: none; }
         .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
         .card { background: white; padding: 35px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 25px; border: 1px solid #e9ecef; }
         .card h2 { font-size: 28px; color: #111; margin-bottom: 20px; font-weight: 600; }
@@ -88,7 +154,11 @@
         .alert-show-error .alert-keyword { color: #c62828; }
         .alert-show-info { background: #f5f9fc; border-left-color: #1565c0; }
         .alert-show-info .alert-keyword { color: #1565c0; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 25px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 25px; }
+        @media (max-width: 575px) {
+            .card { padding: 22px 18px; }
+            .card h2 { font-size: 22px; }
+        }
         .auction-card { background: white; border-radius: 12px; padding: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border: 1px solid #e9ecef; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         table th, table td { padding: 15px; text-align: left; border-bottom: 1px solid #e9ecef; }
@@ -112,11 +182,35 @@
         }
         .sidebar-backdrop { display: none; }
         @media (max-width: 991px) {
-            .topbar-mobile { display: flex; }
-            .sidebar { position: fixed; left: -300px; top: 0; z-index: 1002; transition: left .25s ease; }
-            .sidebar.open { left: 0; }
-            .sidebar-backdrop.open { display: block; position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 1001; }
-            .container { padding: 16px; }
+            .topbar-mobile { display: flex; order: 1; }
+            .content-area { order: 2; }
+            .sidebar-close-btn { display: flex; }
+            .sidebar {
+                position: fixed;
+                left: 0;
+                top: 0;
+                z-index: 1003;
+                width: min(300px, 88vw);
+                max-width: 100%;
+                transform: translateX(-105%);
+                transition: transform 0.28s ease;
+                box-shadow: none;
+                padding-top: max(20px, env(safe-area-inset-top));
+                padding-bottom: max(20px, env(safe-area-inset-bottom));
+            }
+            .sidebar.open {
+                transform: translateX(0);
+                box-shadow: 8px 0 32px rgba(0,0,0,0.25);
+            }
+            .sidebar-backdrop.open {
+                display: block;
+                position: fixed;
+                inset: 0;
+                background: rgba(15, 23, 42, 0.45);
+                z-index: 1002;
+                -webkit-tap-highlight-color: transparent;
+            }
+            .container { padding: 16px; padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
         }
     </style>
 </head>
@@ -144,15 +238,17 @@
 @endphp
 <div class="app-shell">
     <div class="topbar-mobile">
-        <button id="hamburgerOpen" class="hamburger-btn" type="button"><i class="fas fa-bars"></i></button>
-        <div>Auction Portal</div>
-        {{-- [EMD/WALLET DISABLED] Wallet icon in mobile topbar removed --}}
-        <div></div>
+        <button id="hamburgerOpen" class="hamburger-btn" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="sidebar"><i class="fas fa-bars"></i></button>
+        <div class="topbar-title">Auction Portal</div>
+        <div style="width:40px;flex-shrink:0;" aria-hidden="true"></div>
     </div>
-    <aside id="sidebar" class="sidebar">
-        <div class="sidebar-logo">
-            <img src="{{ asset('images/nixi_logo1.jpg') }}" alt="NIXI Logo">
-            <strong>Auction Portal</strong>
+    <aside id="sidebar" class="sidebar" aria-label="Main navigation">
+        <div class="sidebar-top-row">
+            <div class="sidebar-logo">
+                <img src="{{ asset('images/nixi_logo1.jpg') }}" alt="NIXI Logo">
+                <strong>Auction Portal</strong>
+            </div>
+            <button type="button" class="sidebar-close-btn" id="sidebarClose" aria-label="Close menu"><i class="fas fa-times"></i></button>
         </div>
         {{-- [EMD/WALLET DISABLED] Wallet balance card removed from sidebar --}}
         {{-- <div class="sidebar-wallet">
@@ -163,7 +259,6 @@
         <a class="menu-link {{ str_starts_with((string) $currentRoute, 'user.auctions') ? 'active' : '' }}" href="{{ route('user.auctions.index') }}"><i class="fas fa-fw fa-hammer"></i><span>Browse auctions</span></a>
         <a class="menu-link {{ $currentRoute === 'user.my-bids' ? 'active' : '' }}" href="{{ route('user.my-bids') }}"><i class="fas fa-fw fa-list-check"></i><span>My bids</span></a>
         <a class="menu-link {{ $notificationsNavActive ? 'active' : '' }}" href="{{ route('user.notifications') }}"><i class="fas fa-fw fa-bell"></i><span>Notifications</span>@if($unreadNotificationCount > 0)<span class="menu-badge">{{ $unreadNotificationCount }}</span>@endif</a>
-        <a class="menu-link {{ $currentRoute === 'user.notifications.new' ? 'active' : '' }}" href="{{ route('user.notifications.new') }}"><i class="fas fa-fw fa-pen-to-square"></i><span>New message</span></a>
         <a class="menu-link {{ $currentRoute === 'user.profile' ? 'active' : '' }}" href="{{ route('user.profile') }}"><i class="fas fa-fw fa-user"></i><span>Profile</span></a>
         <form method="POST" action="{{ route('logout') }}">
             @csrf
@@ -178,21 +273,62 @@
     </main>
 </div>
 <script>
+(function () {
     const sidebar = document.getElementById('sidebar');
     const backdrop = document.getElementById('sidebarBackdrop');
     const openBtn = document.getElementById('hamburgerOpen');
+    const closeBtn = document.getElementById('sidebarClose');
+    if (!sidebar || !backdrop) return;
+
+    function openDrawer() {
+        sidebar.classList.add('open');
+        backdrop.classList.add('open');
+        document.body.classList.add('drawer-open');
+        if (openBtn) {
+            openBtn.setAttribute('aria-expanded', 'true');
+        }
+    }
+    function closeDrawer() {
+        sidebar.classList.remove('open');
+        backdrop.classList.remove('open');
+        document.body.classList.remove('drawer-open');
+        if (openBtn) {
+            openBtn.setAttribute('aria-expanded', 'false');
+        }
+    }
     if (openBtn) {
-        openBtn.addEventListener('click', () => {
-            sidebar.classList.add('open');
-            backdrop.classList.add('open');
+        openBtn.addEventListener('click', function () {
+            if (sidebar.classList.contains('open')) {
+                closeDrawer();
+            } else {
+                openDrawer();
+            }
         });
     }
-    if (backdrop) {
-        backdrop.addEventListener('click', () => {
-            sidebar.classList.remove('open');
-            backdrop.classList.remove('open');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeDrawer);
+    }
+    backdrop.addEventListener('click', closeDrawer);
+    sidebar.querySelectorAll('a.menu-link').forEach(function (a) {
+        a.addEventListener('click', closeDrawer);
+    });
+    const logoutForm = sidebar.querySelector('form[action*="logout"]');
+    if (logoutForm) {
+        logoutForm.addEventListener('submit', function () {
+            closeDrawer();
         });
     }
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && sidebar.classList.contains('open')) {
+            closeDrawer();
+        }
+    });
+    window.addEventListener('resize', function () {
+        if (window.innerWidth >= 992) {
+            closeDrawer();
+        }
+    });
+})();
 </script>
 </body>
 </html>

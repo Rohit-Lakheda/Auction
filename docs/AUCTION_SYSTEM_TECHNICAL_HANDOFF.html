@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NIXI Auction Portal - Technical Handoff</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #121a31;
+      --panel-2: #182345;
+      --text: #eaf0ff;
+      --muted: #a7b3d7;
+      --accent: #7aa2ff;
+      --good: #4cd4a7;
+      --warn: #ffcf66;
+      --border: #27355f;
+      --card: #0f1730;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Inter, "Segoe UI", Arial, sans-serif;
+      background: linear-gradient(180deg, #0a0f1f 0%, #0c1430 45%, #0b1020 100%);
+      color: var(--text);
+      line-height: 1.55;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+      padding: 24px 18px;
+      border-right: 1px solid var(--border);
+      background: rgba(7, 12, 25, 0.92);
+      backdrop-filter: blur(8px);
+    }
+
+    .brand {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: var(--accent);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      color: #06112b;
+      background: var(--good);
+      font-weight: 700;
+      margin-bottom: 14px;
+    }
+
+    .toc a {
+      display: block;
+      color: var(--muted);
+      text-decoration: none;
+      padding: 8px 10px;
+      margin: 3px 0;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    .toc a:hover {
+      color: var(--text);
+      background: rgba(122, 162, 255, 0.14);
+    }
+
+    main {
+      padding: 28px;
+    }
+
+    .hero {
+      background: linear-gradient(125deg, var(--panel) 0%, var(--panel-2) 100%);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+      margin-bottom: 22px;
+    }
+
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      max-width: 900px;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .pill {
+      border: 1px solid var(--border);
+      background: rgba(122, 162, 255, 0.12);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+    }
+
+    section {
+      margin-bottom: 18px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+    }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 22px;
+      color: #c8d8ff;
+    }
+
+    h3 {
+      margin: 18px 0 8px;
+      font-size: 17px;
+      color: #d8e3ff;
+    }
+
+    ul {
+      margin: 8px 0 10px 20px;
+      padding: 0;
+    }
+
+    li { margin: 6px 0; }
+
+    code {
+      background: rgba(122, 162, 255, 0.16);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1px 6px;
+      font-family: Consolas, Menlo, monospace;
+      color: #c7dcff;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(17, 27, 56, 0.65);
+      padding: 14px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+
+    th, td {
+      border: 1px solid var(--border);
+      padding: 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th { background: rgba(122, 162, 255, 0.16); }
+
+    .mermaid-wrap {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #0a132d;
+      padding: 10px;
+      overflow: auto;
+      margin-top: 10px;
+    }
+
+    .note {
+      border-left: 4px solid var(--warn);
+      background: rgba(255, 207, 102, 0.08);
+      color: #ffecbf;
+      padding: 10px 12px;
+      border-radius: 8px;
+      margin: 12px 0;
+    }
+
+    .ok {
+      border-left-color: var(--good);
+      background: rgba(76, 212, 167, 0.08);
+      color: #d3ffee;
+    }
+
+    footer {
+      opacity: 0.8;
+      font-size: 13px;
+      margin-top: 16px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 1100px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { position: static; height: auto; }
+      .grid-2 { grid-template-columns: 1fr; }
+      main { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">NIXI Auction Portal</div>
+      <div class="badge">Technical Handoff</div>
+      <nav class="toc">
+        <a href="#scope">1. Scope & Purpose</a>
+        <a href="#stack">2. Stack & Runtime</a>
+        <a href="#architecture">3. Architecture</a>
+        <a href="#roles">4. Access & Roles</a>
+        <a href="#flows">5. End-to-End Flows</a>
+        <a href="#integrations">6. Integrations</a>
+        <a href="#routes">7. Route Matrix</a>
+        <a href="#schema">8. Database Schema</a>
+        <a href="#security">9. Security & Verification</a>
+        <a href="#runbook">10. Operations Runbook</a>
+        <a href="#risks">11. Caveats & Risks</a>
+        <a href="#checklist">12. Handoff Checklist</a>
+        <a href="#index">13. File Index</a>
+      </nav>
+    </aside>
+
+    <main>
+      <div class="hero">
+        <h1>NIXI Auction Portal - Complete Technical Documentation</h1>
+        <p>
+          This shareable document consolidates architecture, flow logic, integrations, verification controls, and schema information for a full engineering handoff.
+          It is designed for onboarding a new team quickly with production-grade clarity.
+        </p>
+        <div class="meta">
+          <span class="pill">Laravel Application</span>
+          <span class="pill">Session-Based Auth</span>
+          <span class="pill">PayU + SMS + SMTP + IdFy</span>
+          <span class="pill">User/Admin/API Flows</span>
+          <span class="pill">DB Schema Inventory Included</span>
+        </div>
+      </div>
+
+      <section id="scope">
+        <h2>1) Purpose and Scope</h2>
+        <ul>
+          <li>Document complete system behavior for external engineering teams.</li>
+          <li>Cover architecture, business flows, technical contracts, and schema.</li>
+          <li>Explain verification/OTP/payment controls and security boundaries.</li>
+          <li>Provide operational guidance and known caveats for safer changes.</li>
+        </ul>
+      </section>
+
+      <section id="stack">
+        <h2>2) Stack and Runtime</h2>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Core</h3>
+            <ul>
+              <li>Framework: Laravel (PHP)</li>
+              <li>Rendering: Blade server-side templates</li>
+              <li>DB Access: Query Builder + direct DB operations</li>
+              <li>Logs: <code>storage/logs/laravel.log</code></li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Operational</h3>
+            <ul>
+              <li>Background command: <code>php artisan emd:process-defaults</code></li>
+              <li>Payment callback endpoints with signature validation</li>
+              <li>Session middleware: <code>session.auth</code>, <code>session.admin</code></li>
+              <li>Mixed schema source: migrations + legacy DB tables</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="architecture">
+        <h2>3) System Architecture</h2>
+        <div class="mermaid-wrap">
+          <pre class="mermaid">
+graph TD
+  A[Browser: User/Admin] --> B[Laravel Routes]
+  B --> C[Controllers]
+  C --> D[Services Layer]
+  C --> E[(Database)]
+  D --> E
+  D --> F[PayU]
+  D --> G[MyToday SMS]
+  C --> H[SMTP Mailer]
+  C --> I[IdFy PAN Verify]
+  C --> J[Blade Views]
+  J --> A
+          </pre>
+        </div>
+
+        <h3>Module Boundaries</h3>
+        <ul>
+          <li><code>app/Http/Controllers</code>: orchestration and request flow.</li>
+          <li><code>app/Services</code>: shared domain logic (payments, SMS, blacklist, settings, auction defaults).</li>
+          <li><code>resources/views</code>: user/admin portal pages and forms.</li>
+          <li><code>routes/web.php</code>: public/user/admin/api endpoint contract.</li>
+          <li><code>database/migrations</code>: partial schema source of truth.</li>
+        </ul>
+      </section>
+
+      <section id="roles">
+        <h2>4) Access Control and Roles</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Role</th>
+              <th>Middleware</th>
+              <th>Scope</th>
+              <th>Examples</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>User</td>
+              <td><code>session.auth</code></td>
+              <td>Bidder operations, profile, notifications, invoices</td>
+              <td><code>/user/auctions</code>, <code>/user/profile</code></td>
+            </tr>
+            <tr>
+              <td>Admin</td>
+              <td><code>session.admin</code></td>
+              <td>Auction management, messaging, blacklist, audit</td>
+              <td><code>/admin/dashboard</code>, <code>/admin/auctions</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="flows">
+        <h2>5) End-to-End Functional Flows</h2>
+
+        <h3>5.1 Registration + Verification + Payment</h3>
+        <div class="mermaid-wrap">
+          <pre class="mermaid">
+flowchart TD
+  R1[Open Register Page] --> R2[Submit Identity Data]
+  R2 --> R3[Email OTP Send/Verify]
+  R3 --> R4[Mobile OTP Send/Verify]
+  R4 --> R5[PAN Verify via IdFy]
+  R5 --> R6[Create Pending Registration]
+  R6 --> R7[Initiate Registration Payment]
+  R7 --> R8[PayU Callback]
+  R8 -->|Success| R9[Create User + Registration Records]
+  R8 -->|Failure| R10[Show Failure/Retry]
+          </pre>
+        </div>
+
+        <h3>5.2 User Auction Flow</h3>
+        <div class="mermaid-wrap">
+          <pre class="mermaid">
+flowchart LR
+  U1[List Auctions] --> U2[View Auction Detail]
+  U2 --> U3[Join Auction]
+  U3 --> U4[Place Bid]
+  U4 --> U5[Bid Validation]
+  U5 -->|Valid| U6[Store Bid + Bid Log]
+  U5 -->|Invalid| U7[Reject + Message]
+  U6 --> U8[Anti-Sniping Extend Check]
+  U8 --> U9[Updated Auction Status]
+          </pre>
+        </div>
+
+        <h3>5.3 Profile OTP Flows (Password/Email/Mobile)</h3>
+        <div class="mermaid-wrap">
+          <pre class="mermaid">
+flowchart TD
+  P1[User Opens Profile] --> P2[Select Section]
+  P2 --> P3[Send OTP]
+  P3 --> P4[Store OTP + Timestamp in Session]
+  P4 --> P5[Keep Section Open via profile_ui_section]
+  P5 --> P6[Submit OTP + New Value]
+  P6 --> P7{OTP valid and <= 10 min?}
+  P7 -->|No| P8[Error + keep input + section open]
+  P7 -->|Yes| P9[Update user/registration fields]
+  P9 --> P10[Write identity change log]
+  P10 --> P11[Clear OTP/pending/session UI state]
+          </pre>
+        </div>
+
+        <h3>5.4 Auction Payment + Post-Closure Promotion</h3>
+        <div class="mermaid-wrap">
+          <pre class="mermaid">
+flowchart TD
+  A1[Auction Closed] --> A2[Winner Payment Window Active]
+  A2 --> A3{Winner paid in time?}
+  A3 -->|Yes| A4[Finalize winner payment status]
+  A3 -->|No| A5[emd:process-defaults command]
+  A5 --> A6[Mark top bidder default]
+  A6 --> A7[Promote H2/H3 and reopen payment window]
+          </pre>
+        </div>
+
+        <h3>5.5 Admin Messaging Flow</h3>
+        <div class="mermaid-wrap">
+          <pre class="mermaid">
+flowchart LR
+  M1[Admin Compose Message] --> M2[Select Recipient Filters]
+  M2 --> M3[Create admin_messages row]
+  M3 --> M4[Create per-user admin_message_recipients rows]
+  M4 --> M5[User reads thread]
+  M5 --> M6[User/Admin reply]
+  M6 --> M7[Store in admin_message_replies]
+          </pre>
+        </div>
+      </section>
+
+      <section id="integrations">
+        <h2>6) Integration Contracts</h2>
+
+        <h3>6.1 PayU</h3>
+        <ul>
+          <li>Used for registration payment, auction payment, and participation fee flow.</li>
+          <li>Callback signature/hash is verified before finalizing transaction state.</li>
+          <li>Callback endpoints exist under <code>/payu/*</code> and are webhook-compatible.</li>
+        </ul>
+
+        <h3>6.2 SMS Gateway (MyToday BulkPush)</h3>
+        <ul>
+          <li>Service: <code>app/Services/BulkSmsService.php</code></li>
+          <li>Endpoint default: <code>https://bulkpush.mytoday.com/BulkSms/SingleMsgApi</code></li>
+          <li>Request sent as <code>application/x-www-form-urlencoded</code>.</li>
+          <li>MSISDN formatting: sends Indian numbers with <code>91</code> prefix.</li>
+          <li>Optional params: <code>entityid</code>, <code>async</code> (if configured).</li>
+        </ul>
+
+        <table>
+          <thead>
+            <tr><th>Config Key</th><th>Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>SMS_BULK_ENABLED</code></td><td>Enable/disable real SMS send</td></tr>
+            <tr><td><code>SMS_BULK_URL</code></td><td>Gateway endpoint</td></tr>
+            <tr><td><code>SMS_BULK_FEED_ID</code></td><td>Gateway account feed id</td></tr>
+            <tr><td><code>SMS_BULK_USERNAME</code></td><td>Gateway username</td></tr>
+            <tr><td><code>SMS_BULK_PASSWORD</code></td><td>Gateway password</td></tr>
+            <tr><td><code>SMS_BULK_TEMPLATE_ID</code></td><td>DLT-approved template id</td></tr>
+            <tr><td><code>SMS_BULK_SENDER_ID</code></td><td>Sender id</td></tr>
+            <tr><td><code>SMS_BULK_ENTITY_ID</code></td><td>Optional DLT entity id</td></tr>
+            <tr><td><code>SMS_BULK_ASYNC</code></td><td>Optional gateway mode</td></tr>
+          </tbody>
+        </table>
+
+        <h3>6.3 SMTP / Email</h3>
+        <ul>
+          <li>Used in registration, profile OTP email, admin messages, payment notifications.</li>
+          <li>Supports dynamic SMTP settings from DB (<code>email_settings</code>) in existing implementation paths.</li>
+        </ul>
+
+        <h3>6.4 PAN Verification (IdFy)</h3>
+        <ul>
+          <li>Registration calls IdFy APIs for PAN verification task creation and status checks.</li>
+          <li>Result gates continuation of registration flow.</li>
+        </ul>
+      </section>
+
+      <section id="routes">
+        <h2>7) Route Matrix</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Area</th>
+              <th>Examples</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Public</td>
+              <td><code>/login</code>, <code>/register/*</code>, <code>/forgot-password/*</code>, <code>/payu/*</code></td>
+              <td>No session.auth/session.admin required</td>
+            </tr>
+            <tr>
+              <td>User</td>
+              <td><code>/user/auctions</code>, <code>/user/profile/*</code>, <code>/user/notifications/*</code></td>
+              <td>Protected by <code>session.auth</code></td>
+            </tr>
+            <tr>
+              <td>Admin</td>
+              <td><code>/admin/dashboard</code>, <code>/admin/auctions/*</code>, <code>/admin/blacklist</code></td>
+              <td>Protected by <code>session.admin</code></td>
+            </tr>
+            <tr>
+              <td>API v1</td>
+              <td><code>/api/v1/auctions</code>, <code>/api/v1/payments/*</code>, <code>/api/v1/support/tickets</code></td>
+              <td>Session-authenticated API endpoints</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="schema">
+        <h2>8) Database Schema Documentation</h2>
+        <div class="note">
+          This repository has mixed schema ownership. Some core business tables are legacy/provisioned outside visible migrations.
+          For complete external sharing, include production DDL exports for those legacy tables.
+        </div>
+
+        <h3>8.1 Tables from migrations</h3>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Framework</h3>
+            <ul>
+              <li><code>users</code>, <code>password_reset_tokens</code>, <code>sessions</code></li>
+              <li><code>cache</code>, <code>cache_locks</code></li>
+              <li><code>jobs</code>, <code>job_batches</code>, <code>failed_jobs</code></li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Auction/Finance/Support</h3>
+            <ul>
+              <li><code>transactions</code>, <code>wallet_topups</code>, <code>auction_participants</code>, <code>watchlists</code></li>
+              <li><code>blacklisted_users</code>, <code>bid_logs</code>, <code>notification_logs</code>, <code>audit_logs</code></li>
+              <li><code>support_tickets</code>, <code>admin_messages</code>, <code>admin_message_recipients</code>, <code>admin_message_replies</code>, <code>user_identity_change_logs</code></li>
+            </ul>
+          </div>
+        </div>
+
+        <h3>8.2 Key index and constraint patterns</h3>
+        <ul>
+          <li>Watchlist uniqueness: <code>(user_id, auction_id)</code></li>
+          <li>Auction participant uniqueness: <code>(auction_id, user_id)</code></li>
+          <li>Messaging recipient uniqueness: <code>(message_id, user_id)</code></li>
+          <li>High-frequency index usage on <code>created_at</code>, entity refs, and status columns</li>
+        </ul>
+
+        <h3>8.3 Legacy tables requiring DDL export</h3>
+        <ul>
+          <li><code>auctions</code> (core columns), <code>bids</code>, <code>registration</code></li>
+          <li><code>payment_transactions</code>, <code>registration_payments</code>, <code>pending_registrations</code></li>
+          <li><code>settings</code>, <code>notifications</code> (if present), <code>email_settings</code></li>
+        </ul>
+      </section>
+
+      <section id="security">
+        <h2>9) Security and Verification Controls</h2>
+        <h3>OTP Policy</h3>
+        <ul>
+          <li>6-digit OTP, TTL 10 minutes.</li>
+          <li>Stored in session with scoped keys by user id/hash target identity.</li>
+          <li>Invalid/expired OTP blocks state transition.</li>
+        </ul>
+
+        <h3>Blacklist and Fraud Controls</h3>
+        <ul>
+          <li>Identity vectors: email, mobile, PAN, device fingerprint, IP.</li>
+          <li>Applied in registration, login, and profile identity changes.</li>
+        </ul>
+
+        <h3>Payment Trust Boundary</h3>
+        <ul>
+          <li>Gateway callbacks validated by hash/signature.</li>
+          <li>Duplicate callback handling guards against repeat updates.</li>
+        </ul>
+
+        <h3>Auditability</h3>
+        <ul>
+          <li><code>audit_logs</code> for security/operations events.</li>
+          <li><code>bid_logs</code> for bid lifecycle visibility.</li>
+          <li><code>user_identity_change_logs</code> for profile update traceability.</li>
+        </ul>
+      </section>
+
+      <section id="runbook">
+        <h2>10) Operations Runbook</h2>
+        <h3>10.1 Environment and config checklist</h3>
+        <ul>
+          <li>DB connectivity + migration consistency</li>
+          <li>PayU credentials + callback URLs</li>
+          <li>SMTP settings (env or DB-configured email settings)</li>
+          <li>SMS gateway variables and DLT mappings</li>
+        </ul>
+
+        <h3>10.2 Post-config command</h3>
+        <p><code>php artisan config:clear</code></p>
+
+        <h3>10.3 Scheduled command</h3>
+        <p><code>php artisan emd:process-defaults</code> - promote next bidder when payment window expires.</p>
+
+        <h3>10.4 Incident troubleshooting pointers</h3>
+        <ul>
+          <li>SMS not delivered: inspect <code>BulkSms</code> logs + provider TID delivery dashboard.</li>
+          <li>Payment mismatch: verify callback hash and transaction reference mapping.</li>
+          <li>Profile OTP issue: inspect session key lifetimes and profile pending state keys.</li>
+        </ul>
+      </section>
+
+      <section id="risks">
+        <h2>11) Known Caveats and Risks</h2>
+        <ul>
+          <li>Core table DDL not fully represented in migrations (portability risk).</li>
+          <li>Custom session auth pattern may be misread as standard guard flow.</li>
+          <li>Wallet/EMD features exist in code but several routes are intentionally disabled.</li>
+          <li>Debug/non-production OTP exposure paths must remain restricted in prod.</li>
+          <li>Runtime table/config assumptions should be normalized into migration-driven infra over time.</li>
+        </ul>
+      </section>
+
+      <section id="checklist">
+        <h2>12) New Team Handoff Checklist</h2>
+        <ol>
+          <li>Export and version all legacy table DDL from production/staging.</li>
+          <li>Create ERD and confirm all FK/logical relationships.</li>
+          <li>Validate all route groups, middleware, and role paths.</li>
+          <li>Run complete OTP test suite: registration, profile, forgot-password.</li>
+          <li>Run payment callback end-to-end staging tests with gateway signatures.</li>
+          <li>Validate blacklist behavior across identity vectors.</li>
+          <li>Validate invoice generation and storage permissions.</li>
+          <li>Enable and monitor scheduled <code>emd:process-defaults</code> execution.</li>
+        </ol>
+        <div class="note ok">
+          Recommendation: keep this HTML file and the markdown source in the same release package for both human-readable sharing and version-controlled edits.
+        </div>
+      </section>
+
+      <section id="index">
+        <h2>13) Engineering File Index</h2>
+        <ul>
+          <li><code>routes/web.php</code> - complete route contract</li>
+          <li><code>routes/console.php</code> - operations command entry</li>
+          <li><code>app/Http/Controllers/UserAuctionController.php</code> - auctions, profile OTP, notifications</li>
+          <li><code>app/Http/Controllers/RegistrationController.php</code> - registration, OTP, PAN checks</li>
+          <li><code>app/Http/Controllers/AuthController.php</code> - login/logout/session behavior</li>
+          <li><code>app/Http/Controllers/PasswordController.php</code> - forgot/reset password flow</li>
+          <li><code>app/Http/Controllers/AdminController.php</code> - admin operations and governance</li>
+          <li><code>app/Http/Controllers/AdminNotificationController.php</code> - admin/user message threads</li>
+          <li><code>app/Http/Controllers/PaymentController.php</code> - payment orchestration</li>
+          <li><code>app/Services/BulkSmsService.php</code> - SMS gateway adapter</li>
+          <li><code>app/Services/BlacklistService.php</code> - fraud/identity blocking controls</li>
+          <li><code>app/Services/PayuService.php</code> - payment gateway contract</li>
+          <li><code>database/migrations/*</code> - available migration schema definitions</li>
+        </ul>
+      </section>
+
+      <footer>
+        Generated documentation artifact for external team sharing.<br />
+        File: <code>docs/AUCTION_SYSTEM_TECHNICAL_HANDOFF.html</code>
+      </footer>
+    </main>
+  </div>
+
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      securityLevel: "loose",
+      theme: "dark",
+      themeVariables: {
+        fontFamily: "Inter, Segoe UI, Arial",
+        primaryColor: "#1f2d57",
+        primaryTextColor: "#ecf2ff",
+        primaryBorderColor: "#3f5ea7",
+        lineColor: "#9ec2ff",
+        tertiaryColor: "#14203e",
+        background: "#0a132d"
+      }
+    });
+  </script>
+</body>
+</html>

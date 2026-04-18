@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\BlacklistService;
+use App\Services\BulkSmsService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -12,8 +13,10 @@ use Illuminate\Support\Facades\Schema;
 
 class RegistrationController extends Controller
 {
-    public function __construct(private readonly BlacklistService $blacklistService)
-    {
+    public function __construct(
+        private readonly BlacklistService $blacklistService,
+        private readonly BulkSmsService $bulkSmsService,
+    ) {
     }
 
     public function show()
@@ -86,7 +89,26 @@ class RegistrationController extends Controller
         $request->session()->put('mobile_otp_' . md5($mobile), $otp);
         $request->session()->put('mobile_otp_time_' . md5($mobile), time());
 
-        return response()->json(['success' => true, 'message' => 'OTP sent to your mobile.', 'otp' => $otp]);
+        if (config('sms.enabled')) {
+            if (! $this->bulkSmsService->sendOtp($mobile, $otp)) {
+                Log::warning('Registration mobile OTP: SMS send failed', [
+                    'mobile_last4' => substr($mobile, -4),
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Could not send SMS. Please try again later or contact support.',
+                ]);
+            }
+
+            return response()->json(['success' => true, 'message' => 'OTP sent to your mobile.']);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'OTP generated (SMS gateway disabled — use OTP below in local dev).',
+            'otp' => $otp,
+        ]);
     }
 
     public function verifyMobileOtp(Request $request)
