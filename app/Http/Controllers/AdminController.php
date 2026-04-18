@@ -3,12 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Services\AppSettingsService;
+use App\Services\BidPreauthSettlementService;
 use App\Services\BlacklistService;
 use Carbon\Carbon;
-use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 
@@ -17,8 +19,8 @@ class AdminController extends Controller
     public function __construct(
         private readonly AppSettingsService $settingsService,
         private readonly BlacklistService $blacklistService,
-    ) {
-    }
+        private readonly BidPreauthSettlementService $bidPreauthSettlementService,
+    ) {}
 
     public function dashboard(Request $request)
     {
@@ -35,17 +37,17 @@ class AdminController extends Controller
             ->where('a.status', 'closed')
             ->where(function ($q): void {
                 $q->where('a.auction_outcome', 'failed')
-                ->orWhereNotExists(function ($sq): void {
-                    $sq->select(DB::raw(1))
-                        ->from('bids as b')
-                        ->whereColumn('b.auction_id', 'a.id');
-                })->orWhere(function ($sq): void {
-                    $sq->whereNotNull('a.winner_user_id')
-                        ->where(function ($x): void {
-                            $x->whereNull('a.payment_status')
-                                ->orWhere('a.payment_status', '<>', 'paid');
-                        });
-                });
+                    ->orWhereNotExists(function ($sq): void {
+                        $sq->select(DB::raw(1))
+                            ->from('bids as b')
+                            ->whereColumn('b.auction_id', 'a.id');
+                    })->orWhere(function ($sq): void {
+                        $sq->whereNotNull('a.winner_user_id')
+                            ->where(function ($x): void {
+                                $x->whereNull('a.payment_status')
+                                    ->orWhere('a.payment_status', '<>', 'paid');
+                            });
+                    });
             })
             ->count();
         $totalUsers = DB::table('users')->where('role', 'user')->count();
@@ -79,17 +81,17 @@ class AdminController extends Controller
                 ->where('a.status', 'closed')
                 ->where(function ($q): void {
                     $q->where('a.auction_outcome', 'failed')
-                    ->orWhereNotExists(function ($sq): void {
-                        $sq->select(DB::raw(1))
-                            ->from('bids as b')
-                            ->whereColumn('b.auction_id', 'a.id');
-                    })->orWhere(function ($sq): void {
-                        $sq->whereNotNull('a.winner_user_id')
-                            ->where(function ($x): void {
-                                $x->whereNull('a.payment_status')
-                                    ->orWhere('a.payment_status', '<>', 'paid');
-                            });
-                    });
+                        ->orWhereNotExists(function ($sq): void {
+                            $sq->select(DB::raw(1))
+                                ->from('bids as b')
+                                ->whereColumn('b.auction_id', 'a.id');
+                        })->orWhere(function ($sq): void {
+                            $sq->whereNotNull('a.winner_user_id')
+                                ->where(function ($x): void {
+                                    $x->whereNull('a.payment_status')
+                                        ->orWhere('a.payment_status', '<>', 'paid');
+                                });
+                        });
                 });
             $filterLabel = 'Failed Auctions';
         }
@@ -130,18 +132,19 @@ class AdminController extends Controller
                     $q->where('a.status', 'closed')
                         ->where(function ($sq): void {
                             $sq->where('a.auction_outcome', 'failed')
-                            ->orWhereNotExists(function ($s): void {
-                                $s->select(DB::raw(1))
-                                    ->from('bids as b')
-                                    ->whereColumn('b.auction_id', 'a.id');
-                            })->orWhere(function ($x): void {
-                                $x->whereNotNull('a.winner_user_id')
-                                    ->where(function ($z): void {
-                                        $z->whereNull('a.payment_status')
-                                            ->orWhere('a.payment_status', '<>', 'paid');
-                                    });
-                            });
+                                ->orWhereNotExists(function ($s): void {
+                                    $s->select(DB::raw(1))
+                                        ->from('bids as b')
+                                        ->whereColumn('b.auction_id', 'a.id');
+                                })->orWhere(function ($x): void {
+                                    $x->whereNotNull('a.winner_user_id')
+                                        ->where(function ($z): void {
+                                            $z->whereNull('a.payment_status')
+                                                ->orWhere('a.payment_status', '<>', 'paid');
+                                        });
+                                });
                         });
+
                     return;
                 }
                 $q->where('a.status', $status);
@@ -152,7 +155,7 @@ class AdminController extends Controller
                     $q->where('a.status', 'closed')->whereNotNull('a.winner_user_id');
                 }
             })
-            ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%' . $search . '%'))
+            ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%'.$search.'%'))
             ->orderByDesc('a.created_at');
 
         $auctions = $this->paginateQuery($auctionsQuery, $perPage);
@@ -174,9 +177,9 @@ class AdminController extends Controller
             ->join('users as u', 'u.id', '=', 'b.user_id')
             ->join('auctions as a', 'a.id', '=', 'b.auction_id')
             ->when($search !== '', fn ($q) => $q->where(function ($sq) use ($search): void {
-                $sq->where('u.name', 'like', '%' . $search . '%')
-                    ->orWhere('u.email', 'like', '%' . $search . '%')
-                    ->orWhere('a.title', 'like', '%' . $search . '%');
+                $sq->where('u.name', 'like', '%'.$search.'%')
+                    ->orWhere('u.email', 'like', '%'.$search.'%')
+                    ->orWhere('a.title', 'like', '%'.$search.'%');
             }))
             ->when($status !== 'all', fn ($q) => $q->where('a.status', $status))
             ->orderByDesc('b.created_at')
@@ -275,10 +278,10 @@ class AdminController extends Controller
             ->leftJoin('users as u', 'u.id', '=', 't.user_id')
             ->when($status !== 'all', fn ($q) => $q->where('t.status', $status))
             ->when($search !== '', fn ($q) => $q->where(function ($sq) use ($search): void {
-                $sq->where('t.subject', 'like', '%' . $search . '%')
-                    ->orWhere('t.message', 'like', '%' . $search . '%')
-                    ->orWhere('u.name', 'like', '%' . $search . '%')
-                    ->orWhere('u.email', 'like', '%' . $search . '%');
+                $sq->where('t.subject', 'like', '%'.$search.'%')
+                    ->orWhere('t.message', 'like', '%'.$search.'%')
+                    ->orWhere('u.name', 'like', '%'.$search.'%')
+                    ->orWhere('u.email', 'like', '%'.$search.'%');
             }))
             ->orderByRaw("FIELD(t.status, 'open','in_progress','resolved','closed')")
             ->orderByDesc('t.created_at')
@@ -308,10 +311,10 @@ class AdminController extends Controller
             ->when($status === 'active', fn ($q) => $q->where('b.is_active', 1))
             ->when($status === 'inactive', fn ($q) => $q->where('b.is_active', 0))
             ->when($search !== '', fn ($q) => $q->where(function ($sq) use ($search): void {
-                $sq->where('b.email', 'like', '%' . $search . '%')
-                    ->orWhere('b.mobile', 'like', '%' . $search . '%')
-                    ->orWhere('b.pan_card_number', 'like', '%' . $search . '%')
-                    ->orWhere('u.name', 'like', '%' . $search . '%');
+                $sq->where('b.email', 'like', '%'.$search.'%')
+                    ->orWhere('b.mobile', 'like', '%'.$search.'%')
+                    ->orWhere('b.pan_card_number', 'like', '%'.$search.'%')
+                    ->orWhere('u.name', 'like', '%'.$search.'%');
             }))
             ->orderByDesc('b.blacklisted_at')
             ->select('b.*', 'u.name as user_name', 'u.email as user_email')
@@ -333,6 +336,7 @@ class AdminController extends Controller
         $newState = (int) ($row->is_active ?? 0) === 1 ? 0 : 1;
         DB::table('blacklisted_users')->where('id', $id)->update(['is_active' => $newState, 'updated_at' => now()]);
         $this->logAudit('blacklist_toggled', 'blacklisted_users', (string) $id, ['is_active' => $newState], $request);
+
         return redirect()->route('admin.blacklist')->with('success', $newState ? 'Blacklist activated.' : 'Blacklist deactivated.');
     }
 
@@ -347,16 +351,17 @@ class AdminController extends Controller
         $logs = DB::table('audit_logs')
             ->when($action !== 'all', fn ($q) => $q->where('action', $action))
             ->when($search !== '', fn ($q) => $q->where(function ($sq) use ($search): void {
-                $sq->where('entity_type', 'like', '%' . $search . '%')
-                    ->orWhere('entity_id', 'like', '%' . $search . '%')
-                    ->orWhere('action', 'like', '%' . $search . '%')
-                    ->orWhere('ip_address', 'like', '%' . $search . '%');
+                $sq->where('entity_type', 'like', '%'.$search.'%')
+                    ->orWhere('entity_id', 'like', '%'.$search.'%')
+                    ->orWhere('action', 'like', '%'.$search.'%')
+                    ->orWhere('ip_address', 'like', '%'.$search.'%');
             }))
             ->orderByDesc('created_at')
             ->limit(500)
             ->get();
 
         $actions = DB::table('audit_logs')->select('action')->distinct()->orderBy('action')->pluck('action');
+
         return view('admin.audit-logs', compact('logs', 'search', 'action', 'actions') + ['setupMissing' => false]);
     }
 
@@ -380,8 +385,10 @@ class AdminController extends Controller
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+
             return back()->with('success', 'Auction created successfully!');
         }
+
         return view('admin.add-auction');
     }
 
@@ -407,8 +414,10 @@ class AdminController extends Controller
             ]);
             $data = $this->normalizeAuctionDateInputs($data);
             DB::table('auctions')->where('id', $id)->update([...$data, 'updated_at' => now()]);
+
             return back()->with('success', 'Auction updated successfully!');
         }
+
         return view('admin.edit-auction', ['auction' => $auction]);
     }
 
@@ -417,6 +426,7 @@ class AdminController extends Controller
         if (DB::table('bids')->where('auction_id', $id)->count() === 0) {
             DB::table('auctions')->where('id', $id)->delete();
         }
+
         return redirect()->route('admin.dashboard');
     }
 
@@ -459,7 +469,9 @@ class AdminController extends Controller
         } else {
             DB::table('auctions')->where('id', $id)->update(['status' => 'closed', 'auction_outcome' => 'failed', 'updated_at' => now()]);
         }
+        $this->bidPreauthSettlementService->settleAfterAuctionClosed($id);
         $this->logAudit('auction_force_closed', 'auction', (string) $id, null, $request);
+
         return redirect()->route('admin.auctions.index')->with('success', 'Auction closed successfully.');
     }
 
@@ -498,6 +510,7 @@ class AdminController extends Controller
         ]);
 
         $this->logAudit('auction_reopened', 'auction', (string) $id, ['new_end' => $newEnd->format('Y-m-d H:i:s')], $request);
+
         return redirect()->route('admin.auctions.index')->with('success', 'Auction reopened successfully.');
     }
 
@@ -519,6 +532,7 @@ class AdminController extends Controller
             'payment_window_expires_at' => null,
             'updated_at' => now(),
         ]);
+        $this->bidPreauthSettlementService->cancelAllOpenHoldsForAuction($id);
         $this->logAudit('auction_cancelled', 'auction', (string) $id, null, $request);
 
         return redirect()->route('admin.auctions.index')->with('success', 'Auction cancelled successfully.');
@@ -534,19 +548,19 @@ class AdminController extends Controller
             $this->applyAuctionEmailSettings();
             $siteUrl = rtrim((string) config('app.url', url('/')), '/');
             $body = "Dear {$user->name},\n\n"
-                . "Congratulations! You have won the auction: {$auctionTitle}\n\n"
-                . "Winning Amount: \u20b9" . number_format($finalPrice, 2) . "\n"
-                . "Payment Deadline: {$paymentDeadline}\n\n"
-                . "Please log in to the portal and go to \"Won Auctions\" to complete your payment before the deadline.\n"
-                . "Failing to pay within the deadline will be recorded as a default on your account.\n\n"
-                . "Login here: {$siteUrl}/login\n\n"
-                . "Regards,\nAuction Portal Team";
+                ."Congratulations! You have won the auction: {$auctionTitle}\n\n"
+                ."Winning Amount: \u20b9".number_format($finalPrice, 2)."\n"
+                ."Payment Deadline: {$paymentDeadline}\n\n"
+                ."Please log in to the portal and go to \"Won Auctions\" to complete your payment before the deadline.\n"
+                ."Failing to pay within the deadline will be recorded as a default on your account.\n\n"
+                ."Login here: {$siteUrl}/login\n\n"
+                ."Regards,\nAuction Portal Team";
             Mail::mailer('smtp')->raw($body, static function ($message) use ($user, $auctionTitle): void {
                 $message->to((string) $user->email)
-                    ->subject('Congratulations! You have won the auction \u2013 ' . $auctionTitle);
+                    ->subject('Congratulations! You have won the auction \u2013 '.$auctionTitle);
             });
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('Winner notification email failed.', [
+            Log::warning('Winner notification email failed.', [
                 'user_id' => $userId,
                 'auction' => $auctionTitle,
                 'error' => $e->getMessage(),
@@ -600,8 +614,8 @@ class AdminController extends Controller
             ->join('users as u', 'b.user_id', '=', 'u.id')
             ->where('b.auction_id', $id)
             ->when($search !== '', fn ($q) => $q->where(function ($sq) use ($search): void {
-                $sq->where('u.name', 'like', '%' . $search . '%')
-                    ->orWhere('u.email', 'like', '%' . $search . '%');
+                $sq->where('u.name', 'like', '%'.$search.'%')
+                    ->orWhere('u.email', 'like', '%'.$search.'%');
             }))
             ->orderByDesc('b.amount')
             ->orderBy('b.created_at')
@@ -628,11 +642,12 @@ class AdminController extends Controller
             ->whereIn('a.status', ['closed', 'completed', 'failed'])
             ->when($status !== 'all', fn ($q) => $q->where('a.status', $status))
             ->when($payment !== 'all', fn ($q) => $q->where('a.payment_status', $payment))
-            ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%' . $search . '%'))
+            ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%'.$search.'%'))
             ->orderByDesc('a.end_datetime')
             ->select(['a.*', 'u.name as winner_name', 'u.email as winner_email']);
 
         $completedAuctions = $this->paginateQuery($completedQuery, $perPage);
+
         return view('admin.completed', [
             'completedAuctions' => $completedAuctions,
             'filters' => ['status' => $status, 'payment' => $payment, 'search' => $search],
@@ -658,11 +673,12 @@ class AdminController extends Controller
                     Mail::raw("Temporary Password: {$tempPassword}\nReset token: {$resetToken}", function ($m) use ($user): void {
                         $m->to($user->email)->subject('Account Credentials Reset');
                     });
-                    session()->flash('success', 'Credentials sent successfully to ' . $user->email);
+                    session()->flash('success', 'Credentials sent successfully to '.$user->email);
                 } catch (\Throwable) {
-                    session()->flash('success', 'Credentials generated. Temporary Password: ' . $tempPassword);
+                    session()->flash('success', 'Credentials generated. Temporary Password: '.$tempPassword);
                 }
             }
+
             return redirect()->route('admin.manage-users', ['id' => $userId]);
         }
         $viewUserId = (int) $request->query('id', 0);
@@ -671,8 +687,8 @@ class AdminController extends Controller
         }
         $selectedUser = null;
         if ($viewUserId > 0) {
-            $selectedUser = DB::selectOne("SELECT u.*, r.registration_id, r.registration_type, r.pan_card_number, r.mobile as reg_mobile, r.date_of_birth, r.payment_status, r.payment_date, r.payment_amount, r.payment_transaction_id
-                FROM users u LEFT JOIN registration r ON u.email = r.email WHERE u.id = ?", [$viewUserId]);
+            $selectedUser = DB::selectOne('SELECT u.*, r.registration_id, r.registration_type, r.pan_card_number, r.mobile as reg_mobile, r.date_of_birth, r.payment_status, r.payment_date, r.payment_amount, r.payment_transaction_id
+                FROM users u LEFT JOIN registration r ON u.email = r.email WHERE u.id = ?', [$viewUserId]);
         }
         $search = trim((string) $request->query('search', ''));
         $userFilter = (string) $request->query('user_filter', 'all');
@@ -689,16 +705,17 @@ class AdminController extends Controller
             ->when($userFilter === 'blocked', fn ($q) => $q->where('u.is_blocked', 1))
             ->when($userFilter === 'defaulted', fn ($q) => $q->where('u.default_count', '>', 0))
             ->when($search !== '', fn ($q) => $q->where(function ($sq) use ($search): void {
-                $sq->where('u.name', 'like', '%' . $search . '%')
-                    ->orWhere('u.email', 'like', '%' . $search . '%')
-                    ->orWhere('r.registration_id', 'like', '%' . $search . '%');
+                $sq->where('u.name', 'like', '%'.$search.'%')
+                    ->orWhere('u.email', 'like', '%'.$search.'%')
+                    ->orWhere('r.registration_id', 'like', '%'.$search.'%');
             }))
-            ->selectRaw("u.id, u.name, u.email, u.role, u.created_at, u.is_blocked, r.registration_id, r.registration_type, r.payment_status,
+            ->selectRaw('u.id, u.name, u.email, u.role, u.created_at, u.is_blocked, r.registration_id, r.registration_type, r.payment_status,
                 (SELECT COUNT(*) FROM bids WHERE user_id = u.id) as total_bids,
-                (SELECT COUNT(*) FROM auctions WHERE winner_user_id = u.id) as won_auctions")
+                (SELECT COUNT(*) FROM auctions WHERE winner_user_id = u.id) as won_auctions')
             ->orderByDesc('u.created_at');
 
         $users = $this->paginateQuery($usersQuery, $perPage);
+
         return view('admin.manage-users', [
             'users' => $users,
             'selectedUser' => $selectedUser,
@@ -816,6 +833,7 @@ class AdminController extends Controller
         } else {
             $this->blacklistService->deactivateBlacklistForUserId($id);
         }
+
         return back()->with('success', $newState === 1 ? 'User blocked successfully.' : 'User unblocked successfully.');
     }
 
@@ -839,6 +857,7 @@ class AdminController extends Controller
                         'updated_at' => now(),
                     ]
                 );
+
                 return redirect()->route('admin.settings', ['tab' => 'registration'])->with('success', 'Registration amount updated successfully!');
             }
 
@@ -856,6 +875,7 @@ class AdminController extends Controller
                         'updated_at' => now(),
                     ]
                 );
+
                 return redirect()->route('admin.settings', ['tab' => 'registration'])->with('success', 'Default participation fee updated successfully!');
             }
 
@@ -908,6 +928,7 @@ class AdminController extends Controller
                         'updated_by' => (int) $request->session()->get('user_id'), 'created_at' => now(), 'updated_at' => now(),
                     ]);
                 }
+
                 return redirect()->route('admin.settings', ['tab' => 'email'])->with('success', 'Email settings updated successfully!');
             }
 
@@ -920,9 +941,10 @@ class AdminController extends Controller
                     Mail::raw('This is a test email from Auction Portal admin settings.', static function ($m) use ($to): void {
                         $m->to($to)->subject('Auction Portal Test Email');
                     });
+
                     return redirect()->route('admin.settings', ['tab' => 'email'])->with('success', 'Test email sent successfully!');
                 } catch (\Throwable $e) {
-                    return back()->withErrors(['test_email' => 'Failed to send test email: ' . $e->getMessage()]);
+                    return back()->withErrors(['test_email' => 'Failed to send test email: '.$e->getMessage()]);
                 }
             }
         }
@@ -977,7 +999,8 @@ class AdminController extends Controller
                 });
                 $count = count($data);
                 $request->session()->forget(['import_data', 'import_preview']);
-                return back()->with('success', $count . ' auctions imported successfully!');
+
+                return back()->with('success', $count.' auctions imported successfully!');
             }
 
             if ($request->hasFile('excel_file')) {
@@ -1039,6 +1062,7 @@ class AdminController extends Controller
             return 'all';
         }
         $value = (int) $raw;
+
         return in_array($value, [10, 20, 50, 100], true) ? $value : $default;
     }
 
@@ -1048,6 +1072,7 @@ class AdminController extends Controller
             $total = (clone $query)->count();
             $perPage = max(1, $total);
         }
+
         return $query->paginate((int) $perPage)->withQueryString();
     }
 
@@ -1058,6 +1083,7 @@ class AdminController extends Controller
             return 100000;
         }
         $i = (int) $v;
+
         return in_array($i, [10, 20, 50, 100], true) ? $i : $default;
     }
 

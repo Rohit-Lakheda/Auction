@@ -2,18 +2,25 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\BulkSmsService;
-use App\Services\BlacklistService;
-use App\Services\EmdAuctionService;
 use App\Services\AppSettingsService;
+use App\Services\AuctionAntiSnipingService;
+use App\Services\BidPreauthSettlementService;
+use App\Services\BidPreauthService;
+use App\Services\BlacklistService;
+use App\Services\BulkSmsService;
+use App\Services\EmdAuctionService;
+use App\Services\PayuService;
+use Carbon\Carbon;
+use Illuminate\Contracts\View\View;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
-use Carbon\Carbon;
 
 class UserAuctionController extends Controller
 {
@@ -22,8 +29,11 @@ class UserAuctionController extends Controller
         private readonly AppSettingsService $settingsService,
         private readonly BlacklistService $blacklistService,
         private readonly BulkSmsService $bulkSmsService,
-    ) {
-    }
+        private readonly BidPreauthService $bidPreauthService,
+        private readonly PayuService $payuService,
+        private readonly AuctionAntiSnipingService $antiSnipingService,
+        private readonly BidPreauthSettlementService $bidPreauthSettlementService,
+    ) {}
 
     public function index(Request $request)
     {
@@ -41,8 +51,8 @@ class UserAuctionController extends Controller
         $perPage = $this->resolvePerPage($request, 12);
 
         $watchSelect = $watchlistEnabled
-            ? "(SELECT COUNT(*) FROM watchlists w WHERE w.auction_id = a.id AND w.user_id = ?) as watchlisted_count"
-            : "0 as watchlisted_count";
+            ? '(SELECT COUNT(*) FROM watchlists w WHERE w.auction_id = a.id AND w.user_id = ?) as watchlisted_count'
+            : '0 as watchlisted_count';
 
         $now = now();
 
@@ -51,21 +61,21 @@ class UserAuctionController extends Controller
                 ->selectRaw('a.*, (SELECT MAX(amount) FROM bids WHERE auction_id = a.id) as current_bid, (SELECT COUNT(*) FROM bids WHERE auction_id = a.id) as bid_count, 0 as watchlisted_count')
                 ->where('a.winner_user_id', $userId)
                 ->whereIn('a.status', ['closed', 'completed'])
-                ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%' . $search . '%'));
+                ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%'.$search.'%'));
         } elseif ($view === 'watchlist' && $watchlistEnabled) {
             $query = DB::table('watchlists as w')
                 ->join('auctions as a', 'a.id', '=', 'w.auction_id')
                 ->selectRaw('a.*, (SELECT MAX(amount) FROM bids WHERE auction_id = a.id) as current_bid, (SELECT COUNT(*) FROM bids WHERE auction_id = a.id) as bid_count, 1 as watchlisted_count')
                 ->where('w.user_id', $userId)
                 ->where('a.status', 'active')
-                ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%' . $search . '%'));
+                ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%'.$search.'%'));
         } elseif ($view === 'live') {
             $query = DB::table('auctions as a')
                 ->selectRaw("a.*, (SELECT MAX(amount) FROM bids WHERE auction_id = a.id) as current_bid, (SELECT COUNT(*) FROM bids WHERE auction_id = a.id) as bid_count, {$watchSelect}", $watchlistEnabled ? [$userId] : [])
                 ->where('a.status', 'active')
                 ->where('a.end_datetime', '>', $now)
                 ->where('a.end_datetime', '<=', $now->copy()->addDays(7))
-                ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%' . $search . '%'));
+                ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%'.$search.'%'));
         } elseif ($view === 'bidding') {
             $query = DB::table('auctions as a')
                 ->selectRaw("a.*, (SELECT MAX(amount) FROM bids WHERE auction_id = a.id) as current_bid, (SELECT COUNT(*) FROM bids WHERE auction_id = a.id) as bid_count, {$watchSelect}", $watchlistEnabled ? [$userId] : [])
@@ -77,7 +87,7 @@ class UserAuctionController extends Controller
                         ->whereColumn('b.auction_id', 'a.id')
                         ->where('b.user_id', $userId);
                 })
-                ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%' . $search . '%'));
+                ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%'.$search.'%'));
         } elseif ($view === 'watchlist' && ! $watchlistEnabled) {
             $query = DB::table('auctions as a')
                 ->selectRaw('a.*, 0 as current_bid, 0 as bid_count, 0 as watchlisted_count')
@@ -86,7 +96,7 @@ class UserAuctionController extends Controller
             $query = DB::table('auctions as a')
                 ->selectRaw("a.*, (SELECT MAX(amount) FROM bids WHERE auction_id = a.id) as current_bid, (SELECT COUNT(*) FROM bids WHERE auction_id = a.id) as bid_count, {$watchSelect}", $watchlistEnabled ? [$userId] : [])
                 ->where('a.status', 'active')
-                ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%' . $search . '%'));
+                ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%'.$search.'%'));
         }
 
         if ($view === 'won') {
@@ -267,6 +277,10 @@ class UserAuctionController extends Controller
         $bidAmount = (float) $request->input('bid_amount');
         $userId = (int) $request->session()->get('user_id');
 
+        if ($this->bidPreauthService->isEnabled()) {
+            return $this->placeBidWithPreauth($auctionId, $bidAmount, $userId);
+        }
+
         // [EMD DISABLED] Bypass EmdAuctionService (which requires EMD lock). Bid directly.
         try {
             DB::transaction(function () use ($auctionId, $userId, $bidAmount): void {
@@ -292,13 +306,13 @@ class UserAuctionController extends Controller
                 $minNextBid = $baseLine + (float) $auction->min_increment;
 
                 if ($bidAmount < $minNextBid) {
-                    throw new \RuntimeException('Bid must be at least ₹' . number_format($minNextBid, 2) . '.');
+                    throw new \RuntimeException('Bid must be at least ₹'.number_format($minNextBid, 2).'.');
                 }
 
                 DB::table('bids')->insert([
                     'auction_id' => $auctionId,
-                    'user_id'    => $userId,
-                    'amount'     => $bidAmount,
+                    'user_id' => $userId,
+                    'amount' => $bidAmount,
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
@@ -312,11 +326,11 @@ class UserAuctionController extends Controller
                     ->limit(3)
                     ->get()
                     ->map(fn ($r) => ['user_id' => $r->user_id, 'amount' => $r->amount,
-                                     'bidder_name' => DB::table('users')->where('id', $r->user_id)->value('name') ?? 'Unknown'])
+                        'bidder_name' => DB::table('users')->where('id', $r->user_id)->value('name') ?? 'Unknown'])
                     ->all();
                 DB::table('auctions')->where('id', $auctionId)->update([
                     'top_bidders_json' => json_encode($top, JSON_THROW_ON_ERROR),
-                    'updated_at'       => now(),
+                    'updated_at' => now(),
                 ]);
 
                 if (Schema::hasTable('bid_logs')) {
@@ -330,7 +344,7 @@ class UserAuctionController extends Controller
                     ]);
                 }
             });
-            $this->applyAntiSniping($auctionId);
+            $this->antiSnipingService->extendEndIfWindowApplies($auctionId);
         } catch (\RuntimeException $e) {
             if (Schema::hasTable('bid_logs')) {
                 DB::table('bid_logs')->insert([
@@ -342,10 +356,101 @@ class UserAuctionController extends Controller
                     'created_at' => now(),
                 ]);
             }
+
             return back()->with('bid_error', $e->getMessage());
         }
 
-        return back()->with('bid_success', 'Bid placed successfully for ' . $this->formatInr($bidAmount) . '!');
+        return back()->with('bid_success', 'Bid placed successfully for '.$this->formatInr($bidAmount).'!');
+    }
+
+    /**
+     * Validate bid rules, release previous PayU hold if any, create pending hold and redirect to PayU hosted pre-auth.
+     *
+     * @return View|RedirectResponse
+     */
+    private function placeBidWithPreauth(int $auctionId, float $bidAmount, int $userId)
+    {
+        try {
+            DB::transaction(function () use ($auctionId, $userId, $bidAmount): void {
+                $auction = DB::table('auctions')->where('id', $auctionId)->lockForUpdate()->first();
+                if (! $auction || $auction->status !== 'active') {
+                    throw new \RuntimeException('This auction is not active.');
+                }
+
+                if (Schema::hasTable('auction_participants')) {
+                    $isParticipant = DB::table('auction_participants')
+                        ->where('auction_id', $auctionId)
+                        ->where('user_id', $userId)
+                        ->where('status', 'active')
+                        ->lockForUpdate()
+                        ->exists();
+                    if (! $isParticipant) {
+                        throw new \RuntimeException('Please pay participation fee before bidding.');
+                    }
+                }
+
+                $currentBid = (float) (DB::table('bids')->where('auction_id', $auctionId)->max('amount') ?? 0);
+                $baseLine = $currentBid > 0 ? $currentBid : (float) $auction->base_price;
+                $minNextBid = $baseLine + (float) $auction->min_increment;
+
+                if ($bidAmount < $minNextBid) {
+                    throw new \RuntimeException('Bid must be at least ₹'.number_format($minNextBid, 2).'.');
+                }
+            });
+        } catch (\RuntimeException $e) {
+            if (Schema::hasTable('bid_logs')) {
+                DB::table('bid_logs')->insert([
+                    'auction_id' => $auctionId,
+                    'user_id' => $userId,
+                    'amount' => $bidAmount,
+                    'event_type' => 'rejected',
+                    'meta' => json_encode(['reason' => $e->getMessage()], JSON_THROW_ON_ERROR),
+                    'created_at' => now(),
+                ]);
+            }
+
+            return back()->with('bid_error', $e->getMessage());
+        }
+
+        $cancelError = $this->bidPreauthService->cancelLatestHoldForUser($auctionId, $userId, $this->payuService);
+        if ($cancelError !== null) {
+            return back()->with('bid_error', $cancelError);
+        }
+
+        $transactionId = 'BPA'.time().random_int(1000, 9999);
+        DB::table('bid_preauth_holds')->insert([
+            'auction_id' => $auctionId,
+            'user_id' => $userId,
+            'transaction_id' => $transactionId,
+            'amount' => $bidAmount,
+            'status' => 'pending_redirect',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $auction = DB::table('auctions')->where('id', $auctionId)->first();
+        $user = DB::table('users')->where('id', $userId)->first();
+        $paymentData = [
+            'key' => env('PAYU_MERCHANT_KEY'),
+            'txnid' => $transactionId,
+            'amount' => number_format($bidAmount, 2, '.', ''),
+            'productinfo' => 'Bid hold - '.($auction->title ?? 'Auction'),
+            'firstname' => $user->name ?? 'User',
+            'email' => $user->email ?? '',
+            'phone' => DB::table('registration')->where('email', $user->email ?? '')->value('mobile') ?? '9999999999',
+            'surl' => route('payu.bid-preauth.success'),
+            'furl' => route('payu.bid-preauth.failure'),
+            'udf1' => 'BID_PREAUTH_'.$auctionId,
+            'udf2' => (string) $userId,
+            'udf3' => '',
+            'udf4' => '',
+            'udf5' => '',
+        ];
+        $paymentData['hash'] = $this->payuService->generateHash($paymentData);
+        $paymentData['pre_authorize'] = '1';
+        $paymentData['enforced_payment'] = 'creditcard';
+
+        return view('payments.redirect', ['paymentUrl' => $this->payuService->paymentUrl(), 'paymentData' => $paymentData]);
     }
 
     public function joinAuction(Request $request, int $auctionId)
@@ -353,6 +458,7 @@ class UserAuctionController extends Controller
         if (! Schema::hasTable('auction_participants')) {
             return back()->with('bid_error', 'Participation feature is not available yet.');
         }
+
         return redirect()->route('payments.auction.participation.initiate', ['auctionId' => $auctionId]);
     }
 
@@ -361,6 +467,7 @@ class UserAuctionController extends Controller
         $userId = (int) $request->session()->get('user_id');
         try {
             $status = $this->emdAuctionService->getAuctionStatus($auctionId, $userId);
+
             return response()->json(['success' => true, 'data' => $status]);
         } catch (\RuntimeException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
@@ -372,6 +479,7 @@ class UserAuctionController extends Controller
         $userId = (int) $request->session()->get('user_id');
         try {
             $this->emdAuctionService->completeWinnerPayment($auctionId, $userId);
+
             return back()->with('payment', 'success');
         } catch (\RuntimeException $e) {
             return back()->with('error', $e->getMessage());
@@ -395,6 +503,7 @@ class UserAuctionController extends Controller
 
         if ($exists) {
             DB::table('watchlists')->where('user_id', $userId)->where('auction_id', $auctionId)->delete();
+
             return back()->with('bid_success', 'Removed from watchlist.');
         }
 
@@ -422,7 +531,7 @@ class UserAuctionController extends Controller
             ->join('bids as b', 'a.id', '=', 'b.auction_id')
             ->where('b.user_id', $userId)
             ->when($status !== 'all', fn ($q) => $q->where('a.status', $status))
-            ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%' . $search . '%'))
+            ->when($search !== '', fn ($q) => $q->where('a.title', 'like', '%'.$search.'%'))
             ->when($dateFrom !== '', fn ($q) => $q->whereDate('a.end_datetime', '>=', $dateFrom))
             ->when($dateTo !== '', fn ($q) => $q->whereDate('a.end_datetime', '<=', $dateTo))
             ->selectRaw("DISTINCT a.id, a.title, a.status, a.end_datetime,
@@ -497,7 +606,7 @@ class UserAuctionController extends Controller
             });
 
             $threads = $threads->filter(function ($t) use ($filter, $searchQ) {
-                $combined = strtolower((string) ($t->subject ?? '') . ' ' . ($t->message ?? ''));
+                $combined = strtolower((string) ($t->subject ?? '').' '.($t->message ?? ''));
                 if ($searchQ !== '' && ! str_contains($combined, strtolower($searchQ))) {
                     return false;
                 }
@@ -671,8 +780,8 @@ class UserAuctionController extends Controller
         $userId = (int) $request->session()->get('user_id');
 
         $user = DB::selectOne(
-            "SELECT u.*, r.registration_id, r.registration_type, r.pan_card_number, r.mobile as reg_mobile, r.date_of_birth, r.payment_status, r.payment_date, r.payment_amount, r.payment_transaction_id
-            FROM users u LEFT JOIN registration r ON u.email = r.email WHERE u.id = ?",
+            'SELECT u.*, r.registration_id, r.registration_type, r.pan_card_number, r.mobile as reg_mobile, r.date_of_birth, r.payment_status, r.payment_date, r.payment_amount, r.payment_transaction_id
+            FROM users u LEFT JOIN registration r ON u.email = r.email WHERE u.id = ?',
             [$userId]
         );
         if (! $user) {
@@ -706,8 +815,8 @@ class UserAuctionController extends Controller
         }
 
         $otp = (string) random_int(100000, 999999);
-        $request->session()->put('profile_pwd_otp_' . $userId, $otp);
-        $request->session()->put('profile_pwd_otp_time_' . $userId, time());
+        $request->session()->put('profile_pwd_otp_'.$userId, $otp);
+        $request->session()->put('profile_pwd_otp_time_'.$userId, time());
 
         $this->sendProfileOtpEmail((string) $user->email, $otp, 'password change');
 
@@ -725,8 +834,8 @@ class UserAuctionController extends Controller
             'confirm_password' => ['required', 'string'],
         ]);
 
-        $storedOtp = (string) $request->session()->get('profile_pwd_otp_' . $userId, '');
-        $otpTime = (int) $request->session()->get('profile_pwd_otp_time_' . $userId, 0);
+        $storedOtp = (string) $request->session()->get('profile_pwd_otp_'.$userId, '');
+        $otpTime = (int) $request->session()->get('profile_pwd_otp_time_'.$userId, 0);
         if (! $storedOtp || $storedOtp !== $validated['otp'] || (time() - $otpTime) > 600) {
             $this->setProfileUiSection($request, 'password');
 
@@ -738,7 +847,7 @@ class UserAuctionController extends Controller
             'updated_at' => now(),
         ]);
 
-        $request->session()->forget(['profile_pwd_otp_' . $userId, 'profile_pwd_otp_time_' . $userId]);
+        $request->session()->forget(['profile_pwd_otp_'.$userId, 'profile_pwd_otp_time_'.$userId]);
         $this->clearProfileUiSection($request);
         $this->logUserIdentityChange($userId, 'password', '[redacted]', '[password_changed]', $request);
 
@@ -782,9 +891,9 @@ class UserAuctionController extends Controller
         }
 
         $otp = (string) random_int(100000, 999999);
-        $request->session()->put('profile_email_otp_' . md5($newEmail), $otp);
-        $request->session()->put('profile_email_otp_time_' . md5($newEmail), time());
-        $request->session()->put('profile_email_pending_' . $userId, $newEmail);
+        $request->session()->put('profile_email_otp_'.md5($newEmail), $otp);
+        $request->session()->put('profile_email_otp_time_'.md5($newEmail), time());
+        $request->session()->put('profile_email_pending_'.$userId, $newEmail);
 
         $this->sendProfileOtpEmail($newEmail, $otp, 'email change');
 
@@ -800,15 +909,15 @@ class UserAuctionController extends Controller
             'otp' => ['required', 'digits:6'],
         ]);
 
-        $pending = strtolower(trim((string) $request->session()->get('profile_email_pending_' . $userId, '')));
+        $pending = strtolower(trim((string) $request->session()->get('profile_email_pending_'.$userId, '')));
         if ($pending === '' || ! filter_var($pending, FILTER_VALIDATE_EMAIL)) {
             $this->setProfileUiSection($request, 'email');
 
             return back()->with('error', 'No pending email change. Request a new code first.');
         }
 
-        $storedOtp = (string) $request->session()->get('profile_email_otp_' . md5($pending), '');
-        $otpTime = (int) $request->session()->get('profile_email_otp_time_' . md5($pending), 0);
+        $storedOtp = (string) $request->session()->get('profile_email_otp_'.md5($pending), '');
+        $otpTime = (int) $request->session()->get('profile_email_otp_time_'.md5($pending), 0);
         if (! $storedOtp || $storedOtp !== $validated['otp'] || (time() - $otpTime) > 600) {
             $this->setProfileUiSection($request, 'email');
 
@@ -844,9 +953,9 @@ class UserAuctionController extends Controller
         $this->logUserIdentityChange($userId, 'email', $oldEmail, $pending, $request);
         $request->session()->put('email', $pending);
         $request->session()->forget([
-            'profile_email_otp_' . md5($pending),
-            'profile_email_otp_time_' . md5($pending),
-            'profile_email_pending_' . $userId,
+            'profile_email_otp_'.md5($pending),
+            'profile_email_otp_time_'.md5($pending),
+            'profile_email_pending_'.$userId,
         ]);
         $this->clearProfileUiSection($request);
 
@@ -902,9 +1011,9 @@ class UserAuctionController extends Controller
         }
 
         $otp = (string) random_int(100000, 999999);
-        $request->session()->put('profile_mobile_otp_' . md5($newMobile), $otp);
-        $request->session()->put('profile_mobile_otp_time_' . md5($newMobile), time());
-        $request->session()->put('profile_mobile_pending_' . $userId, $newMobile);
+        $request->session()->put('profile_mobile_otp_'.md5($newMobile), $otp);
+        $request->session()->put('profile_mobile_otp_time_'.md5($newMobile), time());
+        $request->session()->put('profile_mobile_pending_'.$userId, $newMobile);
 
         if (config('sms.enabled')) {
             if (! $this->bulkSmsService->sendOtp($newMobile, $otp)) {
@@ -924,7 +1033,7 @@ class UserAuctionController extends Controller
 
         $msg = 'SMS gateway is disabled. ';
         if (config('app.debug')) {
-            $msg .= 'Dev OTP: ' . $otp;
+            $msg .= 'Dev OTP: '.$otp;
         } else {
             $msg .= 'Configure SMS_BULK_* in .env to send real SMS.';
         }
@@ -941,7 +1050,7 @@ class UserAuctionController extends Controller
             'otp' => ['required', 'digits:6'],
         ]);
 
-        $pending = (string) $request->session()->get('profile_mobile_pending_' . $userId, '');
+        $pending = (string) $request->session()->get('profile_mobile_pending_'.$userId, '');
         $pending = $this->normalizeMobileDigits($pending);
         if (strlen($pending) !== 10) {
             $this->setProfileUiSection($request, 'mobile');
@@ -949,8 +1058,8 @@ class UserAuctionController extends Controller
             return back()->with('error', 'No pending mobile change. Request a new code first.');
         }
 
-        $storedOtp = (string) $request->session()->get('profile_mobile_otp_' . md5($pending), '');
-        $otpTime = (int) $request->session()->get('profile_mobile_otp_time_' . md5($pending), 0);
+        $storedOtp = (string) $request->session()->get('profile_mobile_otp_'.md5($pending), '');
+        $otpTime = (int) $request->session()->get('profile_mobile_otp_time_'.md5($pending), 0);
         if (! $storedOtp || $storedOtp !== $validated['otp'] || (time() - $otpTime) > 600) {
             $this->setProfileUiSection($request, 'mobile');
 
@@ -997,9 +1106,9 @@ class UserAuctionController extends Controller
 
         $this->logUserIdentityChange($userId, 'mobile', $oldMobile ?? '', $pending, $request);
         $request->session()->forget([
-            'profile_mobile_otp_' . md5($pending),
-            'profile_mobile_otp_time_' . md5($pending),
-            'profile_mobile_pending_' . $userId,
+            'profile_mobile_otp_'.md5($pending),
+            'profile_mobile_otp_time_'.md5($pending),
+            'profile_mobile_pending_'.$userId,
         ]);
         $this->clearProfileUiSection($request);
 
@@ -1030,18 +1139,18 @@ class UserAuctionController extends Controller
             return;
         }
         if ($ui === 'mobile') {
-            $raw = $request->session()->get('profile_mobile_pending_' . $userId);
+            $raw = $request->session()->get('profile_mobile_pending_'.$userId);
             $norm = preg_replace('/\D/', '', (string) $raw);
             if (strlen($norm) !== 10) {
                 $request->session()->forget('profile_ui_section');
             }
         } elseif ($ui === 'email') {
-            $e = $request->session()->get('profile_email_pending_' . $userId);
+            $e = $request->session()->get('profile_email_pending_'.$userId);
             if (! is_string($e) || ! filter_var($e, FILTER_VALIDATE_EMAIL)) {
                 $request->session()->forget('profile_ui_section');
             }
         } elseif ($ui === 'password') {
-            if (! $request->session()->has('profile_pwd_otp_' . $userId)) {
+            if (! $request->session()->has('profile_pwd_otp_'.$userId)) {
                 $request->session()->forget('profile_ui_section');
             }
         }
@@ -1107,7 +1216,7 @@ class UserAuctionController extends Controller
     {
         try {
             $this->applyActiveAdminEmailSettingsForProfileOtp();
-            Mail::mailer('smtp')->raw("Your OTP for {$purpose} is: {$otp}\n\nThis code expires in 10 minutes.", static function ($message) use ($email, $purpose): void {
+            Mail::mailer('smtp')->raw("Your OTP for {$purpose} is: {$otp}\n\nThis code expires in 10 minutes.", static function ($message) use ($email): void {
                 $message->to($email)->subject('Profile verification OTP');
             });
         } catch (\Throwable) {
@@ -1165,7 +1274,7 @@ class UserAuctionController extends Controller
 
     private function formatInr(float $amount): string
     {
-        return '₹' . number_format($amount, 2);
+        return '₹'.number_format($amount, 2);
     }
 
     private function updateAuctionStatuses(): void
@@ -1218,6 +1327,8 @@ class UserAuctionController extends Controller
                     ->where('id', $auctionId)
                     ->update(['status' => 'closed', 'auction_outcome' => 'failed']);
             }
+
+            $this->bidPreauthSettlementService->settleAfterAuctionClosed($auctionId);
         }
 
         // Auto-promote H2/H3 when H1's payment window has expired without payment
@@ -1234,7 +1345,7 @@ class UserAuctionController extends Controller
                 $updated = DB::table('auctions')->where('id', $auctionId)->first();
                 if ($updated && $updated->status === 'closed' && $updated->winner_user_id) {
                     $deadline = $updated->payment_window_expires_at
-                        ? \Carbon\Carbon::parse($updated->payment_window_expires_at)->format('d-M-Y h:i A')
+                        ? Carbon::parse($updated->payment_window_expires_at)->format('d-M-Y h:i A')
                         : '-';
                     $this->sendWinnerNotificationEmail(
                         (int) $updated->winner_user_id,
@@ -1262,16 +1373,16 @@ class UserAuctionController extends Controller
             $this->applyAuctionEmailSettings();
             $siteUrl = rtrim((string) config('app.url', url('/')), '/');
             $body = "Dear {$user->name},\n\n"
-                . "Congratulations! You have won the auction: {$auctionTitle}\n\n"
-                . "Winning Amount: \u20b9" . number_format($finalPrice, 2) . "\n"
-                . "Payment Deadline: {$paymentDeadline}\n\n"
-                . "Please log in to the portal and go to \"Won Auctions\" to complete your payment before the deadline.\n"
-                . "Failing to pay within the deadline will be recorded as a default on your account.\n\n"
-                . "Login here: {$siteUrl}/login\n\n"
-                . "Regards,\nAuction Portal Team";
+                ."Congratulations! You have won the auction: {$auctionTitle}\n\n"
+                ."Winning Amount: \u20b9".number_format($finalPrice, 2)."\n"
+                ."Payment Deadline: {$paymentDeadline}\n\n"
+                ."Please log in to the portal and go to \"Won Auctions\" to complete your payment before the deadline.\n"
+                ."Failing to pay within the deadline will be recorded as a default on your account.\n\n"
+                ."Login here: {$siteUrl}/login\n\n"
+                ."Regards,\nAuction Portal Team";
             Mail::mailer('smtp')->raw($body, static function ($message) use ($user, $auctionTitle): void {
                 $message->to((string) $user->email)
-                    ->subject('Congratulations! You have won the auction \u2013 ' . $auctionTitle);
+                    ->subject('Congratulations! You have won the auction \u2013 '.$auctionTitle);
             });
         } catch (\Throwable $e) {
             Log::warning('Winner notification email failed.', [
@@ -1315,32 +1426,13 @@ class UserAuctionController extends Controller
         }
     }
 
-    private function applyAntiSniping(int $auctionId): void
-    {
-        $auction = DB::table('auctions')->where('id', $auctionId)->first();
-        if (! $auction || $auction->status !== 'active') {
-            return;
-        }
-
-        $end = strtotime((string) $auction->end_datetime);
-        $now = time();
-        $remainingSeconds = $end - $now;
-        if ($remainingSeconds > 0 && $remainingSeconds <= 120) {
-            DB::table('auctions')
-                ->where('id', $auctionId)
-                ->update([
-                    'end_datetime' => date('Y-m-d H:i:s', $end + 120),
-                    'updated_at' => now(),
-                ]);
-        }
-    }
-
     private function resolveParticipationFee(object $auction): float
     {
         $perAuction = isset($auction->emd_amount) ? (float) $auction->emd_amount : 0.0;
         if ($perAuction > 0) {
             return $perAuction;
         }
+
         return (float) $this->settingsService->getFloat('bid_participation_fee', 0);
     }
 
@@ -1351,6 +1443,7 @@ class UserAuctionController extends Controller
             return 'all';
         }
         $value = (int) $raw;
+
         return in_array($value, [10, 20, 50, 100], true) ? $value : $default;
     }
 
@@ -1360,12 +1453,13 @@ class UserAuctionController extends Controller
             $total = (clone $query)->count();
             $perPage = max(1, $total);
         }
+
         return $query->paginate((int) $perPage)->withQueryString();
     }
 
     private function inferNotificationKind(object $thread): string
     {
-        $s = strtolower((string) ($thread->subject ?? '') . ' ' . ($thread->message ?? ''));
+        $s = strtolower((string) ($thread->subject ?? '').' '.($thread->message ?? ''));
         if (preg_match('/outbid|out-bid|out bid|been outbid/i', $s)) {
             return 'outbid';
         }
@@ -1383,8 +1477,8 @@ class UserAuctionController extends Controller
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, object>  $threads
-     * @return array<int, array{label: string, items: \Illuminate\Support\Collection}>
+     * @param  Collection<int, object>  $threads
+     * @return array<int, array{label: string, items: Collection}>
      */
     private function groupNotificationsByDay($threads): array
     {

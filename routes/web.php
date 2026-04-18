@@ -1,19 +1,20 @@
 <?php
 
-use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AdminController;
-use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\AdminNotificationController;
-use App\Http\Controllers\PaymentController;
-use App\Http\Controllers\PasswordController;
-use App\Http\Controllers\PortalController;
-use App\Http\Controllers\RegistrationController;
-use App\Http\Controllers\UserDashboardController;
-use App\Http\Controllers\UserAuctionController;
-use App\Http\Controllers\WalletController;
 use App\Http\Controllers\Api\V1\AuctionApiController;
 use App\Http\Controllers\Api\V1\PaymentApiController;
 use App\Http\Controllers\Api\V1\SupportApiController;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BidPreauthController;
+use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\PasswordController;
+use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\PortalController;
+use App\Http\Controllers\RegistrationController;
+use App\Http\Controllers\UserAuctionController;
+use App\Http\Controllers\UserDashboardController;
+use App\Http\Controllers\WalletController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [PortalController::class, 'home'])->name('home');
@@ -39,6 +40,8 @@ Route::match(['get', 'post'], '/payu/auction/success', [PaymentController::class
 Route::match(['get', 'post'], '/payu/auction/failure', [PaymentController::class, 'auctionFailure'])->name('payu.auction.failure');
 Route::match(['get', 'post'], '/payu/registration/success', [PaymentController::class, 'registrationSuccess'])->name('payu.registration.success');
 Route::match(['get', 'post'], '/payu/registration/failure', [PaymentController::class, 'registrationFailure'])->name('payu.registration.failure');
+Route::match(['get', 'post'], '/payu/bid-preauth/success', [BidPreauthController::class, 'success'])->name('payu.bid-preauth.success');
+Route::match(['get', 'post'], '/payu/bid-preauth/failure', [BidPreauthController::class, 'failure'])->name('payu.bid-preauth.failure');
 // [EMD/WALLET DISABLED] Route::match(['get', 'post'], '/payu/wallet/success', [PaymentController::class, 'walletSuccess'])->name('payu.wallet.success');
 // [EMD/WALLET DISABLED] Route::match(['get', 'post'], '/payu/wallet/failure', [PaymentController::class, 'walletFailure'])->name('payu.wallet.failure');
 

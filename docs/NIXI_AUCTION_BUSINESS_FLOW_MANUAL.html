@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NIXI Auction Portal — Business Flow Manual</title>
+  <style>
+    :root {
+      --ink: #1a1a1a;
+      --muted: #5c5c5c;
+      --border: #d4d4d4;
+      --accent: #0f4c81;
+      --accent-light: #e8f1f9;
+      --page-max: 42rem;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      font-size: 16px;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    body {
+      margin: 0;
+      padding: 2.5rem 1.5rem 4rem;
+      font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.55;
+      color: var(--ink);
+      background: #fafafa;
+    }
+
+    .document {
+      max-width: var(--page-max);
+      margin: 0 auto;
+      background: #fff;
+      padding: 2.75rem 2.5rem 3rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+      border: 1px solid var(--border);
+      border-radius: 2px;
+    }
+
+    @media print {
+      body {
+        padding: 0;
+        background: #fff;
+      }
+      .document {
+        box-shadow: none;
+        border: none;
+        max-width: none;
+        padding: 0.75in 0.65in;
+      }
+      .no-print {
+        display: none !important;
+      }
+      a[href^="http"]::after {
+        content: " (" attr(href) ")";
+        font-size: 0.75em;
+        color: var(--muted);
+      }
+    }
+
+    .doc-meta {
+      font-size: 0.875rem;
+      color: var(--muted);
+      margin-bottom: 2rem;
+      padding-bottom: 1.25rem;
+      border-bottom: 2px solid var(--accent);
+    }
+
+    h1 {
+      font-size: 1.65rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin: 0 0 0.35rem;
+      color: var(--accent);
+      line-height: 1.25;
+    }
+
+    .subtitle {
+      font-size: 1rem;
+      color: var(--muted);
+      font-weight: 400;
+      margin: 0;
+    }
+
+    h2 {
+      font-size: 1.125rem;
+      font-weight: 600;
+      margin: 2rem 0 0.75rem;
+      padding-top: 0.25rem;
+      color: var(--ink);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.35rem;
+      page-break-after: avoid;
+    }
+
+    h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin: 1.35rem 0 0.5rem;
+      color: var(--ink);
+      page-break-after: avoid;
+    }
+
+    p {
+      margin: 0 0 0.85rem;
+      text-align: justify;
+      hyphens: auto;
+    }
+
+    ul, ol {
+      margin: 0 0 1rem;
+      padding-left: 1.35rem;
+    }
+
+    li {
+      margin-bottom: 0.4rem;
+    }
+
+    li::marker {
+      color: var(--accent);
+    }
+
+    .lead {
+      font-size: 1.02rem;
+      color: var(--muted);
+      margin-bottom: 1.5rem;
+    }
+
+    .toc {
+      background: var(--accent-light);
+      border: 1px solid #c5d9eb;
+      border-radius: 4px;
+      padding: 1rem 1.25rem 1rem 1.5rem;
+      margin: 1.75rem 0 2rem;
+      page-break-inside: avoid;
+    }
+
+    .toc strong {
+      display: block;
+      margin-bottom: 0.65rem;
+      font-size: 0.9rem;
+      color: var(--accent);
+    }
+
+    .toc ol {
+      margin: 0;
+      padding-left: 1.25rem;
+      font-size: 0.92rem;
+    }
+
+    .toc a {
+      color: var(--ink);
+      text-decoration: none;
+    }
+
+    .toc a:hover {
+      text-decoration: underline;
+    }
+
+    .callout {
+      border-left: 4px solid var(--accent);
+      padding: 0.65rem 0 0.65rem 1rem;
+      margin: 1rem 0;
+      background: #f7f9fb;
+      font-size: 0.92rem;
+      page-break-inside: avoid;
+    }
+
+    .callout strong {
+      color: var(--accent);
+    }
+
+    figure.flowchart {
+      margin: 1.5rem 0;
+      padding: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: #fff;
+      page-break-inside: avoid;
+      overflow-x: auto;
+    }
+
+    figure.flowchart figcaption {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+      font-weight: 600;
+    }
+
+    figure.flowchart svg {
+      display: block;
+      margin: 0 auto;
+      max-width: 100%;
+      height: auto;
+    }
+
+    footer.footer-note {
+      margin-top: 2.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .print-hint {
+      margin-top: 2rem;
+      padding: 0.75rem 1rem;
+      background: #fff9e6;
+      border: 1px solid #e6d38a;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      color: #5c4d26;
+    }
+  </style>
+</head>
+<body>
+  <article class="document">
+    <header>
+      <div class="doc-meta">
+        <strong>Document type:</strong> Business process manual &nbsp;|&nbsp;
+        <strong>Audience:</strong> Operations, compliance, management
+      </div>
+      <h1>NIXI Auction Portal</h1>
+      <p class="subtitle">Business flow manual (non-technical)</p>
+      <p class="lead">
+        This document describes end-to-end processes for registration, bidding, payments, and administration.
+        It is written for stakeholders who need a clear operational picture without reference to software implementation.
+      </p>
+    </header>
+
+    <nav class="toc no-print" aria-label="Table of contents">
+      <strong>Contents</strong>
+      <ol>
+        <li><a href="#roles">Roles and participants</a></li>
+        <li><a href="#registration">New user registration</a></li>
+        <li><a href="#auth">Login and password recovery</a></li>
+        <li><a href="#lifecycle">Auction lifecycle</a></li>
+        <li><a href="#bidder">Bidder journey</a></li>
+        <li><a href="#winner">Winner and payment after closure</a></li>
+        <li><a href="#invoices">Invoices and records</a></li>
+        <li><a href="#profile">Profile and identity updates</a></li>
+        <li><a href="#comms">Communication and support</a></li>
+        <li><a href="#compliance">Compliance and audit</a></li>
+        <li><a href="#overview-diagram">End-to-end overview</a></li>
+      </ol>
+    </nav>
+
+    <section id="roles">
+      <h2>1. Roles and participants</h2>
+      <ul>
+        <li><strong>Applicants and bidders</strong> register on the platform, verify their identity, join auctions where permitted, place bids, and complete payments when they win or when fees apply.</li>
+        <li><strong>Platform administrators</strong> configure and manage auctions, oversee users, enforce policy (including blocking accounts when required), communicate with users, and review activity for oversight.</li>
+      </ul>
+    </section>
+
+    <section id="registration">
+      <h2>2. New user registration</h2>
+      <p>The registration path establishes a verified identity before an applicant may participate financially.</p>
+      <ol>
+        <li>The applicant begins registration and provides contact details.</li>
+        <li><strong>Email</strong> is confirmed using a one-time code sent to that address.</li>
+        <li><strong>Mobile number</strong> is confirmed using a one-time code sent by SMS.</li>
+        <li><strong>PAN</strong> is verified through an authorised identity check.</li>
+        <li>The system ensures the applicant is not disallowed under the organisation’s <strong>block list</strong> rules (aligned email, phone, identity, device, or network indicators as applicable).</li>
+        <li>The applicant pays the <strong>registration fee</strong> through the integrated payment channel.</li>
+        <li>After successful payment, the account is <strong>activated</strong>. Where policy requires, the user may need to complete password setup before full access.</li>
+      </ol>
+      <div class="callout">
+        <strong>Business rules.</strong> Verification codes expire after a short window (typically about ten minutes).
+        Duplicate email or mobile registration is not permitted. Individuals who match block-list criteria cannot complete registration.
+      </div>
+    </section>
+
+    <section id="auth">
+      <h2>3. Login and password recovery</h2>
+      <h3>Login</h3>
+      <p>
+        Users sign in with email and password. Accounts that are blocked or otherwise restricted under policy cannot proceed until resolved through support or administrative action.
+      </p>
+      <h3>Forgotten password</h3>
+      <p>
+        The user requests a one-time code sent to the registered email address, confirms the code within the allowed time, and then chooses a new password.
+      </p>
+    </section>
+
+    <section id="lifecycle">
+      <h2>4. Auction lifecycle</h2>
+      <p>Auctions progress through operational stages such as:</p>
+      <ul>
+        <li><strong>Not yet open</strong> — scheduled or visible but not yet accepting bids under the stated rules.</li>
+        <li><strong>Live</strong> — open for participation (if a participation fee applies) and for bidding according to published rules.</li>
+        <li><strong>Closed or ended</strong> — bidding stops; outcome and settlement steps apply.</li>
+        <li><strong>Cancelled</strong> — the auction does not conclude under the normal sale path.</li>
+      </ul>
+      <p>
+        Administrators create and maintain auctions and may close, reopen, or cancel them in line with operational policy.
+      </p>
+    </section>
+
+    <section id="bidder">
+      <h2>5. Bidder journey</h2>
+      <ol>
+        <li>The user logs in and selects an auction.</li>
+        <li>If business rules require a <strong>participation fee</strong> for that auction, the user pays it once through the payment channel. After payment succeeds, they are recognised as <strong>eligible to bid</strong> on that auction.</li>
+        <li>The user places bids. Each bid must meet the <strong>minimum next bid</strong> requirement: the greater of the current leading offer and the starting price, plus the stated minimum increment.</li>
+        <li>Near the scheduled end time, <strong>anti-sniping</strong> rules may extend the end time so that late bids can be responded to, depending on platform configuration.</li>
+        <li>Users may track auctions of interest and review their own bid history and recent auction activity.</li>
+      </ol>
+      <div class="callout">
+        <strong>Fair use.</strong> Only users who have satisfied participation requirements (when they exist) may bid while the auction is live.
+        Rapid repeated bidding may be limited to reduce misuse.
+      </div>
+    </section>
+
+    <section id="winner">
+      <h2>6. Winner and payment after closure</h2>
+      <ol>
+        <li>When bidding ends and the auction is closed, a <strong>winner</strong> is determined according to published rules (typically the highest qualifying bid).</li>
+        <li>The winner must pay the <strong>amount due</strong> (as defined by policy for that auction) within a defined <strong>payment window</strong>.</li>
+        <li>When payment is received and confirmed, the transaction is treated as <strong>settled</strong> for that winner.</li>
+      </ol>
+      <h3>If the winner does not pay on time</h3>
+      <ul>
+        <li>The platform may record a <strong>default</strong> against the user.</li>
+        <li>After repeated defaults, policy may allow <strong>account restriction or blocking</strong> and inclusion on the <strong>block list</strong>.</li>
+        <li>The opportunity may pass to the <strong>next eligible bidder</strong> (for example, second or third rank), with a <strong>new payment window</strong>, according to organisational rules.</li>
+        <li>A scheduled operational process identifies expired payment windows and applies promotion and default handling in line with policy.</li>
+      </ul>
+    </section>
+
+    <section id="invoices">
+      <h2>7. Invoices and records</h2>
+      <p>
+        Users and authorised administrators can obtain <strong>invoices or payment records</strong> for registration fees and auction-related payments, supporting finance, tax, and audit needs.
+      </p>
+    </section>
+
+    <section id="profile">
+      <h2>8. Profile and identity updates</h2>
+      <p>
+        Logged-in users may update sensitive details such as <strong>password</strong>, <strong>email</strong>, or <strong>mobile number</strong>.
+        Changes that affect identity use one-time confirmation (email or SMS) and the same block-list checks used at registration, so policy cannot be bypassed by changing contact data.
+      </p>
+    </section>
+
+    <section id="comms">
+      <h2>9. Communication and support</h2>
+      <ul>
+        <li><strong>Administrators</strong> may send messages to selected users; conversations can continue in structured threads with replies.</li>
+        <li><strong>Users</strong> can reach <strong>support</strong> through the channels enabled for the deployment (for example, tickets or the same messaging path).</li>
+      </ul>
+    </section>
+
+    <section id="compliance">
+      <h2>10. Compliance and audit</h2>
+      <ul>
+        <li><strong>Block list</strong> — activity is blocked when indicators match blocked records under policy.</li>
+        <li><strong>Audit trail</strong> — important actions are recorded for review by authorised staff.</li>
+        <li><strong>Bid and outcome records</strong> — retained to support transparency and dispute resolution.</li>
+      </ul>
+    </section>
+
+    <section id="overview-diagram">
+      <h2>11. End-to-end overview</h2>
+      <figure class="flowchart">
+        <figcaption id="flow-caption-reg">High-level flow from registration to settlement</figcaption>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 720" width="520" height="720" role="img" aria-labelledby="flow-caption-reg">
+          <defs>
+            <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+              <path d="M0,0 L8,4 L0,8 z" fill="#5c5c5c" />
+            </marker>
+          </defs>
+          <style>
+            .box { fill: #f7f9fb; stroke: #0f4c81; stroke-width: 1.5; }
+            .box-muted { fill: #fff; stroke: #d4d4d4; stroke-width: 1.2; }
+            .diamond { fill: #e8f1f9; stroke: #0f4c81; stroke-width: 1.5; }
+            .txt { font-family: system-ui, Segoe UI, sans-serif; font-size: 11px; fill: #1a1a1a; }
+            .txt-sm { font-size: 10px; fill: #5c5c5c; }
+            .line { stroke: #5c5c5c; stroke-width: 1.2; fill: none; marker-end: url(#arrow); }
+          </style>
+          <!-- Boxes -->
+          <rect class="box" x="140" y="16" width="240" height="44" rx="4" />
+          <text class="txt" x="260" y="38" text-anchor="middle">Applicant registers</text>
+          <text class="txt-sm" x="260" y="52" text-anchor="middle">Email &amp; mobile verification</text>
+
+          <rect class="box" x="140" y="88" width="240" height="36" rx="4" />
+          <text class="txt" x="260" y="111" text-anchor="middle">PAN verified</text>
+
+          <polygon class="diamond" points="260,152 340,188 260,224 180,188" />
+          <text class="txt" x="260" y="184" text-anchor="middle">Allowed?</text>
+
+          <rect class="box-muted" x="360" y="168" width="140" height="44" rx="4" />
+          <text class="txt" x="430" y="188" text-anchor="middle">Stopped —</text>
+          <text class="txt-sm" x="430" y="202" text-anchor="middle">support / policy</text>
+
+          <rect class="box" x="140" y="248" width="240" height="36" rx="4" />
+          <text class="txt" x="260" y="271" text-anchor="middle">Pay registration fee</text>
+
+          <rect class="box" x="140" y="308" width="240" height="36" rx="4" />
+          <text class="txt" x="260" y="331" text-anchor="middle">Account active — login</text>
+
+          <rect class="box" x="140" y="368" width="240" height="44" rx="4" />
+          <text class="txt" x="260" y="388" text-anchor="middle">Open auction</text>
+          <text class="txt-sm" x="260" y="402" text-anchor="middle">Participation fee if required</text>
+
+          <rect class="box" x="140" y="436" width="240" height="36" rx="4" />
+          <text class="txt" x="260" y="459" text-anchor="middle">Place bids while live</text>
+
+          <rect class="box" x="140" y="492" width="240" height="36" rx="4" />
+          <text class="txt" x="260" y="515" text-anchor="middle">Auction closes — winner set</text>
+
+          <rect class="box" x="140" y="548" width="240" height="44" rx="4" />
+          <text class="txt" x="260" y="568" text-anchor="middle">Winner pays within</text>
+          <text class="txt-sm" x="260" y="582" text-anchor="middle">payment window</text>
+
+          <polygon class="diamond" points="260,628 340,664 260,700 180,664" />
+          <text class="txt" x="260" y="660" text-anchor="middle">Paid?</text>
+
+          <rect class="box" x="30" y="642" width="120" height="44" rx="4" />
+          <text class="txt" x="90" y="662" text-anchor="middle">Next bidder</text>
+          <text class="txt-sm" x="90" y="676" text-anchor="middle">per policy</text>
+
+          <rect class="box-muted" x="370" y="642" width="120" height="44" rx="4" />
+          <text class="txt" x="430" y="670" text-anchor="middle">Settled</text>
+
+          <!-- Lines -->
+          <line class="line" x1="260" y1="60" x2="260" y2="88" />
+          <line class="line" x1="260" y1="124" x2="260" y2="152" />
+          <line class="line" x1="340" y1="188" x2="358" y2="188" />
+          <text class="txt-sm" x="348" y="178">No</text>
+          <line class="line" x1="260" y1="224" x2="260" y2="248" />
+          <text class="txt-sm" x="268" y="238">Yes</text>
+          <line class="line" x1="260" y1="284" x2="260" y2="308" />
+          <line class="line" x1="260" y1="344" x2="260" y2="368" />
+          <line class="line" x1="260" y1="412" x2="260" y2="436" />
+          <line class="line" x1="260" y1="472" x2="260" y2="492" />
+          <line class="line" x1="260" y1="528" x2="260" y2="548" />
+          <line class="line" x1="260" y1="592" x2="260" y2="628" />
+          <line class="line" x1="180" y1="664" x2="152" y2="664" />
+          <text class="txt-sm" x="162" y="654">No</text>
+          <line class="line" x1="340" y1="664" x2="368" y2="664" />
+          <text class="txt-sm" x="352" y="654">Yes</text>
+        </svg>
+      </figure>
+    </section>
+
+    <footer class="footer-note">
+      <p>
+        This manual describes business processes only. Operational cut-off times, fee amounts, payment windows, and enforcement thresholds follow organisational policy and published auction terms.
+      </p>
+    </footer>
+
+    <p class="print-hint no-print">
+      <strong>PDF:</strong> Open this file in a browser, use Print → Save as PDF. For best results, enable “Background graphics” if your printer dialog offers it.
+    </p>
+  </article>
+</body>
+</html>

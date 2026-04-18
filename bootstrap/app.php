@@ -1,10 +1,10 @@
 <?php
 
+use App\Http\Middleware\EnsureSessionAdmin;
+use App\Http\Middleware\EnsureSessionAuthenticated;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use App\Http\Middleware\EnsureSessionAdmin;
-use App\Http\Middleware\EnsureSessionAuthenticated;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -25,6 +25,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'payu/registration/failure',
             'payu/wallet/success',
             'payu/wallet/failure',
+            'payu/bid-preauth/success',
+            'payu/bid-preauth/failure',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
