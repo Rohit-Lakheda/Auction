@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Api\V1\Concerns\ApiResponse;
 use App\Services\BidPreauthService;
+use App\Services\PaymentAuditService;
 use App\Services\PayuService;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -46,7 +47,7 @@ class AuctionApiController extends Controller
         ]);
     }
 
-    public function placeBid(Request $request, int $id, BidPreauthService $bidPreauthService, PayuService $payuService)
+    public function placeBid(Request $request, int $id, BidPreauthService $bidPreauthService, PayuService $payuService, PaymentAuditService $paymentAuditService)
     {
         $validated = $request->validate(['bid_amount' => ['required', 'numeric', 'min:0.01']]);
         $userId = (int) $request->session()->get('user_id');
@@ -96,6 +97,8 @@ class AuctionApiController extends Controller
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+
+            $paymentAuditService->recordBidPreauthPending($transactionId, $id, $userId, $amount);
 
             $auction = DB::table('auctions')->where('id', $id)->first();
             $user = DB::table('users')->where('id', $userId)->first();

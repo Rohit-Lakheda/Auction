@@ -58,6 +58,63 @@ class PayuService
         return $paymentData;
     }
 
+    /**
+     * Safe fields for logs (omit card numbers, hashes, CVV-related keys).
+     *
+     * @return array<string, mixed|string>
+     */
+    public function scrubPayuPayloadForLogging(array $data): array
+    {
+        $allow = [
+            'txnid', 'mihpayid', 'status', 'unmappedstatus', 'unamappedstatus',
+            'error', 'error_Message', 'field9', 'addedon', 'mode', 'bankcode',
+            'PG_TYPE', 'amount', 'productinfo', 'firstname', 'email',
+            'udf1', 'udf2', 'udf3', 'udf4', 'udf5', 'net_amount_debit',
+            'payment_source',
+        ];
+
+        $out = [];
+        foreach ($allow as $key) {
+            if (array_key_exists($key, $data)) {
+                $out[$key] = $data[$key];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * User-visible explanation when pre-auth did not result in a card hold / bid.
+     */
+    public function bidPreauthExplanationForUser(array $data): string
+    {
+        $bank = trim((string) ($data['error_Message'] ?? ''));
+        if ($bank !== '' && strcasecmp($bank, 'No Error') !== 0) {
+            return $bank;
+        }
+
+        $field9 = trim((string) ($data['field9'] ?? ''));
+        if ($field9 !== '' && stripos($field9, 'transaction completed successfully') === false) {
+            return $field9;
+        }
+
+        $status = strtolower(trim((string) ($data['status'] ?? '')));
+        $unmapped = strtolower(trim((string) ($data['unmappedstatus'] ?? $data['unamappedstatus'] ?? '')));
+
+        if ($status === 'success' && $unmapped !== '' && $unmapped !== 'auth') {
+            return 'Your card issuer or PayU did not create a pre-authorization hold (issuer status: '
+                .($data['unmappedstatus'] ?? $data['unamappedstatus'] ?? $unmapped)
+                .'). If PayU shows Bounced or Declined, the hold was refused — try another card or contact your bank. No bid was recorded and no amount should stay blocked.';
+        }
+
+        if ($status !== '' && $status !== 'success') {
+            return 'Authorization did not succeed (PayU status: '.($data['status'] ?? 'unknown')
+                .'). No bid was recorded.';
+        }
+
+        return 'Card pre-authorization did not complete. No bid was recorded.';
+    }
+
     public function verifyHash(array $response): bool
     {
         $salt = (string) env('PAYU_SALT', '');

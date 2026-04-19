@@ -9,6 +9,7 @@ use App\Services\BidPreauthSettlementService;
 use App\Services\BlacklistService;
 use App\Services\BulkSmsService;
 use App\Services\EmdAuctionService;
+use App\Services\PaymentAuditService;
 use App\Services\PayuService;
 use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
@@ -33,6 +34,7 @@ class UserAuctionController extends Controller
         private readonly PayuService $payuService,
         private readonly AuctionAntiSnipingService $antiSnipingService,
         private readonly BidPreauthSettlementService $bidPreauthSettlementService,
+        private readonly PaymentAuditService $paymentAuditService,
     ) {}
 
     public function index(Request $request)
@@ -428,6 +430,8 @@ class UserAuctionController extends Controller
             'updated_at' => now(),
         ]);
 
+        $this->paymentAuditService->recordBidPreauthPending($transactionId, $auctionId, $userId, $bidAmount);
+
         $auction = DB::table('auctions')->where('id', $auctionId)->first();
         $user = DB::table('users')->where('id', $userId)->first();
         $paymentData = [
@@ -448,6 +452,13 @@ class UserAuctionController extends Controller
         ];
         $paymentData['hash'] = $this->payuService->generateHash($paymentData);
         $paymentData = $this->payuService->applyBidPreauthHostedFields($paymentData);
+
+        Log::info('bid_preauth.redirect_to_payu', [
+            'auction_id' => $auctionId,
+            'user_id' => $userId,
+            'txnid' => $transactionId,
+            'amount' => $bidAmount,
+        ]);
 
         return view('payments.redirect', ['paymentUrl' => $this->payuService->paymentUrl(), 'paymentData' => $paymentData]);
     }

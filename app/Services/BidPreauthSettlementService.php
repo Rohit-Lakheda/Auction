@@ -8,6 +8,10 @@ use Illuminate\Support\Facades\Schema;
 
 class BidPreauthSettlementService
 {
+    public function __construct(
+        private readonly PaymentAuditService $paymentAudit,
+    ) {}
+
     public function settleAfterAuctionClosed(int $auctionId): void
     {
         if (! Schema::hasTable('bid_preauth_holds')) {
@@ -47,6 +51,14 @@ class BidPreauthSettlementService
                 'response_data' => json_encode(['settlement_cancel' => $r], JSON_THROW_ON_ERROR),
                 'updated_at' => now(),
             ]);
+            $this->paymentAudit->logEvent(
+                $r['success'] ? 'bid_preauth_settlement_cancelled' : 'bid_preauth_settlement_cancel_failed',
+                (string) $hold->transaction_id,
+                $auctionId,
+                (int) $hold->user_id,
+                (float) $hold->amount,
+                ['payu_response' => $r]
+            );
             if (! $r['success']) {
                 Log::warning('Bid preauth settlement: cancel failed.', ['hold_id' => $hold->id, 'auction_id' => $auctionId]);
             }
@@ -69,6 +81,14 @@ class BidPreauthSettlementService
                 DB::table('auctions')->where('id', $auctionId)->update($update);
 
                 $this->syncWinnerPaymentTransaction($auctionId, $winnerId, $winnerHold, $capture);
+                $this->paymentAudit->logEvent(
+                    'bid_preauth_capture_success',
+                    (string) $winnerHold->transaction_id,
+                    $auctionId,
+                    $winnerId,
+                    (float) $winnerHold->amount,
+                    ['capture' => $capture]
+                );
             } else {
                 Log::error('Bid preauth settlement: capture failed.', [
                     'auction_id' => $auctionId,
@@ -104,6 +124,14 @@ class BidPreauthSettlementService
                 'response_data' => json_encode(['auction_cancelled' => $r], JSON_THROW_ON_ERROR),
                 'updated_at' => now(),
             ]);
+            $this->paymentAudit->logEvent(
+                $r['success'] ? 'bid_preauth_hold_cancelled_auction_void' : 'bid_preauth_hold_cancel_failed_auction_void',
+                (string) $hold->transaction_id,
+                $auctionId,
+                (int) $hold->user_id,
+                (float) $hold->amount,
+                ['payu_response' => $r]
+            );
         }
     }
 

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\AuctionAntiSnipingService;
 use App\Services\BidPreauthService;
+use App\Services\PaymentAuditService;
 use App\Services\PayuService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,51 +14,70 @@ use Illuminate\Support\Facades\Schema;
 
 class BidPreauthController extends Controller
 {
-    public function success(Request $request, PayuService $payu, BidPreauthService $bidPreauthService, AuctionAntiSnipingService $antiSniping): RedirectResponse
+    public function success(Request $request, PayuService $payu, BidPreauthService $bidPreauthService, AuctionAntiSnipingService $antiSniping, PaymentAuditService $paymentAudit): RedirectResponse
     {
+        $data = array_merge($request->query(), $request->post());
+        Log::info('bid_preauth.payu_success_url_callback', $payu->scrubPayuPayloadForLogging($data));
+
         $userId = (int) $request->session()->get('user_id');
         if (! $userId) {
+            Log::warning('bid_preauth.success_route_no_session', ['txnid' => $data['txnid'] ?? '']);
+
             return redirect()->route('login');
         }
-
-        $data = array_merge($request->query(), $request->post());
 
         $txnid = (string) ($data['txnid'] ?? '');
         $auctionId = $this->parseAuctionIdFromUdf((string) ($data['udf1'] ?? ''));
         $udfUid = (int) ($data['udf2'] ?? 0);
 
         if ($auctionId <= 0 || $udfUid !== $userId) {
+            Log::warning('bid_preauth.success_route_session_mismatch', [
+                'auction_id_parsed' => $auctionId,
+                'udf_uid' => $udfUid,
+                'session_uid' => $userId,
+                'txnid' => $txnid,
+            ]);
+
             return redirect()->route('user.auctions.index')->with('bid_error', 'Payment response could not be matched to your session.');
         }
 
         if (! $payu->verifyHash($data)) {
-            Log::warning('Bid pre-auth callback hash mismatch.', ['txnid' => $txnid]);
+            Log::warning('bid_preauth.callback_hash_mismatch', ['txnid' => $txnid]);
+            $this->persistPreauthDeclined($bidPreauthService, $payu, $paymentAudit, $txnid, $auctionId, $userId, $data, 'payu_hash_failed', 'payu_preauth_hash_failed');
 
-            return redirect()->route('user.auctions.show', ['auctionId' => $auctionId])->with('bid_error', 'Payment could not be verified.');
+            return redirect()->route('user.auctions.show', ['auctionId' => $auctionId])->with('bid_error', 'Payment could not be verified. If PayU charged a hold, contact support with your PayU transaction ID.');
         }
 
         if (($data['status'] ?? '') !== 'success') {
-            return redirect()->route('user.auctions.show', ['auctionId' => $auctionId])->with('bid_error', 'Authorization was not successful.');
+            $this->persistPreauthDeclined($bidPreauthService, $payu, $paymentAudit, $txnid, $auctionId, $userId, $data, 'payu_status_not_success', 'payu_preauth_status_failed');
+            $msg = $payu->bidPreauthExplanationForUser($data).$this->payuReferenceSuffix($data, $txnid);
+
+            return redirect()->route('user.auctions.show', ['auctionId' => $auctionId])->with('bid_error', $msg);
         }
 
         $unmapped = strtolower((string) ($data['unmappedstatus'] ?? $data['unamappedstatus'] ?? ''));
         if ($unmapped !== 'auth') {
-            Log::notice('Bid pre-auth callback unexpected unmappedstatus.', ['txnid' => $txnid, 'unmapped' => $unmapped]);
+            Log::notice('bid_preauth.callback_not_preauth_hold', [
+                'txnid' => $txnid,
+                'unmappedstatus' => $data['unmappedstatus'] ?? $data['unamappedstatus'] ?? '',
+            ]);
+            $this->persistPreauthDeclined($bidPreauthService, $payu, $paymentAudit, $txnid, $auctionId, $userId, $data, 'payu_hold_not_created', 'payu_preauth_not_auth');
+            $msg = $payu->bidPreauthExplanationForUser($data).$this->payuReferenceSuffix($data, $txnid);
 
-            return redirect()->route('user.auctions.show', ['auctionId' => $auctionId])->with('bid_error', 'This payment was not a card pre-authorization. Try again using a supported credit card.');
+            return redirect()->route('user.auctions.show', ['auctionId' => $auctionId])->with('bid_error', $msg);
         }
 
         $payuTxnId = (string) ($data['mihpayid'] ?? '');
 
         try {
-            DB::transaction(function () use ($txnid, $payuTxnId, $data, $auctionId, $userId): void {
+            DB::transaction(function () use ($txnid, $payuTxnId, $data, $auctionId, $userId, $paymentAudit): void {
                 $hold = DB::table('bid_preauth_holds')
                     ->where('transaction_id', $txnid)
                     ->lockForUpdate()
                     ->first();
 
                 if (! $hold || (int) $hold->user_id !== $userId || (int) $hold->auction_id !== $auctionId) {
-                    Log::warning('Bid pre-auth unknown or mismatched hold.', ['txnid' => $txnid]);
+                    Log::warning('bid_preauth.unknown_or_mismatched_hold', ['txnid' => $txnid]);
 
                     throw new \RuntimeException('missing_hold');
                 }
@@ -124,7 +144,7 @@ class BidPreauthController extends Controller
                         'user_id' => $userId,
                         'amount' => $bidAmount,
                         'event_type' => 'placed',
-                        'meta' => json_encode(['source' => 'bid_preauth', 'txnid' => $txnid], JSON_THROW_ON_ERROR),
+                        'meta' => json_encode(['source' => 'bid_preauth', 'txnid' => $txnid, 'mihpayid' => $payuTxnId], JSON_THROW_ON_ERROR),
                         'created_at' => now(),
                     ]);
                 }
@@ -134,6 +154,16 @@ class BidPreauthController extends Controller
                     'status' => 'bid_recorded',
                     'response_data' => json_encode($data, JSON_THROW_ON_ERROR),
                     'updated_at' => now(),
+                ]);
+
+                $paymentAudit->markBidPreauthAuthorized($txnid, $payuTxnId, $bidAmount, $data);
+
+                Log::info('bid_preauth.hold_recorded_and_bid_placed', [
+                    'auction_id' => $auctionId,
+                    'user_id' => $userId,
+                    'txnid' => $txnid,
+                    'mihpayid' => $payuTxnId,
+                    'amount' => $bidAmount,
                 ]);
             });
         } catch (\RuntimeException $e) {
@@ -162,7 +192,7 @@ class BidPreauthController extends Controller
                 default => redirect()->route('user.auctions.show', ['auctionId' => $auctionId])->with('bid_error', 'Could not complete your bid.'),
             };
         } catch (\Throwable $e) {
-            Log::error('Bid pre-auth callback failed.', ['exception' => $e->getMessage(), 'txnid' => $txnid]);
+            Log::error('bid_preauth.transaction_failed', ['exception' => $e->getMessage(), 'txnid' => $txnid]);
 
             return redirect()->route('user.auctions.show', ['auctionId' => $auctionId > 0 ? $auctionId : 0])->with('bid_error', 'Could not complete your bid.');
         }
@@ -172,25 +202,109 @@ class BidPreauthController extends Controller
         return redirect()->route('user.auctions.show', ['auctionId' => $auctionId])->with('bid_success', 'Bid placed successfully after card authorization.');
     }
 
-    public function failure(Request $request): RedirectResponse
+    public function failure(Request $request, PayuService $payu, BidPreauthService $bidPreauthService, PaymentAuditService $paymentAudit): RedirectResponse
     {
         $data = array_merge($request->query(), $request->post());
+        Log::info('bid_preauth.payu_failure_url_callback', $payu->scrubPayuPayloadForLogging($data));
+
         $txnid = (string) ($data['txnid'] ?? '');
         $auctionId = $this->parseAuctionIdFromUdf((string) ($data['udf1'] ?? ''));
+        $userIdFromUdf = (int) ($data['udf2'] ?? 0);
 
         if ($txnid !== '' && Schema::hasTable('bid_preauth_holds')) {
+            $payuId = isset($data['mihpayid']) ? trim((string) $data['mihpayid']) : '';
             DB::table('bid_preauth_holds')->where('transaction_id', $txnid)->update([
+                'payu_id' => $payuId !== '' ? $payuId : null,
                 'status' => 'failed',
-                'response_data' => json_encode($data, JSON_THROW_ON_ERROR),
+                'response_data' => json_encode($data, JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE),
                 'updated_at' => now(),
             ]);
         }
 
-        if ($auctionId > 0) {
-            return redirect()->route('user.auctions.show', ['auctionId' => $auctionId])->with('bid_error', (string) ($data['error_Message'] ?? $data['error'] ?? 'Authorization failed.'));
+        if ($txnid !== '') {
+            $paymentAudit->markBidPreauthFailed(
+                $txnid,
+                'failed',
+                $payu->bidPreauthExplanationForUser($data),
+                $data
+            );
         }
 
-        return redirect()->route('user.auctions.index')->with('bid_error', 'Authorization failed.');
+        if ($auctionId > 0 && $userIdFromUdf > 0 && Schema::hasTable('bid_logs')) {
+            $hold = $txnid !== '' ? DB::table('bid_preauth_holds')->where('transaction_id', $txnid)->first() : null;
+            $amount = $hold ? (float) $hold->amount : null;
+            $bidPreauthService->logPreauthCallbackEvent($auctionId, $userIdFromUdf, $amount, 'payu_preauth_failure_callback', [
+                'txnid' => $txnid,
+                'payu' => $payu->scrubPayuPayloadForLogging($data),
+            ]);
+        }
+
+        $msg = $payu->bidPreauthExplanationForUser($data).$this->payuReferenceSuffix($data, $txnid);
+
+        if ($auctionId > 0) {
+            return redirect()->route('user.auctions.show', ['auctionId' => $auctionId])->with('bid_error', $msg);
+        }
+
+        return redirect()->route('user.auctions.index')->with('bid_error', $msg);
+    }
+
+    private function persistPreauthDeclined(
+        BidPreauthService $bidPreauthService,
+        PayuService $payu,
+        PaymentAuditService $paymentAudit,
+        string $txnid,
+        int $auctionId,
+        int $userId,
+        array $data,
+        string $holdStatus,
+        string $bidLogEvent,
+    ): void {
+        if ($txnid === '') {
+            return;
+        }
+
+        $bidPreauthService->recordHoldPayuPayload($txnid, $data, $holdStatus);
+        $hold = DB::table('bid_preauth_holds')->where('transaction_id', $txnid)->first();
+        $amount = $hold ? (float) $hold->amount : null;
+        $bidPreauthService->logPreauthCallbackEvent($auctionId, $userId, $amount, $bidLogEvent, [
+            'txnid' => $txnid,
+            'payu' => $payu->scrubPayuPayloadForLogging($data),
+        ]);
+
+        $paymentAudit->markBidPreauthFailed(
+            $txnid,
+            $this->mapHoldDeclineToPaymentStatus($holdStatus),
+            $payu->bidPreauthExplanationForUser($data),
+            $data
+        );
+    }
+
+    private function mapHoldDeclineToPaymentStatus(string $holdStatus): string
+    {
+        return match ($holdStatus) {
+            'payu_hash_failed' => 'verification_failed',
+            'payu_status_not_success' => 'failed',
+            'payu_hold_not_created' => 'declined',
+            default => 'failed',
+        };
+    }
+
+    /**
+     * Shown to users for support correlation (PayU dashboard "Bounced", etc.).
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function payuReferenceSuffix(array $data, string $txnid): string
+    {
+        $parts = [];
+        if (! empty($data['mihpayid'])) {
+            $parts[] = 'PayU ID '.(string) $data['mihpayid'];
+        }
+        if ($txnid !== '') {
+            $parts[] = 'Txn '.$txnid;
+        }
+
+        return $parts === [] ? '' : ' ('.implode(' · ', $parts).').';
     }
 
     private function parseAuctionIdFromUdf(string $udf1): int
