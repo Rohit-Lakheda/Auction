@@ -18,15 +18,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'session.admin' => EnsureSessionAdmin::class,
         ]);
 
+        // PayU POSTs browser callbacks without a Laravel CSRF token; wildcard covers all routes under /payu/.
         $middleware->validateCsrfTokens(except: [
-            'payu/auction/success',
-            'payu/auction/failure',
-            'payu/registration/success',
-            'payu/registration/failure',
-            'payu/wallet/success',
-            'payu/wallet/failure',
-            'payu/bid-preauth/success',
-            'payu/bid-preauth/failure',
+            'payu/*',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
