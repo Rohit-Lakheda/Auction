@@ -19,6 +19,8 @@
         <p style="font-size:13px;color:#c62828;max-width:420px;margin:8px auto 0;">Registration fee is non-refundable. Please proceed only if you agree.</p>
     @elseif(str_starts_with((string) ($paymentData['udf1'] ?? ''), 'PARTICIPATION'))
         <p style="font-size:13px;color:#c62828;max-width:420px;margin:8px auto 0;">Participation fee is non-refundable. Please proceed only if you agree.</p>
+    @elseif(str_starts_with((string) ($paymentData['udf1'] ?? ''), 'BID_PREAUTH'))
+        <p style="font-size:13px;color:#1565c0;max-width:420px;margin:8px auto 0;">Bid security uses a <strong>credit card pre-authorization</strong> (hold). Use a supported credit card — net banking or debit will not hold funds the same way.</p>
     @endif
     <p style="font-size:12px;color:#666;">Please do not close this page</p>
 </div>

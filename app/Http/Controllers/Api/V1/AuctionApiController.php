@@ -116,8 +116,7 @@ class AuctionApiController extends Controller
                 'udf5' => '',
             ];
             $payload['hash'] = $payuService->generateHash($payload);
-            $payload['pre_authorize'] = '1';
-            $payload['enforced_payment'] = 'creditcard';
+            $payload = $payuService->applyBidPreauthHostedFields($payload);
 
             return $this->ok([
                 'payment_url' => $payuService->paymentUrl(),

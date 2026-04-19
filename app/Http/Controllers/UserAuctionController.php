@@ -4,8 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Services\AppSettingsService;
 use App\Services\AuctionAntiSnipingService;
-use App\Services\BidPreauthSettlementService;
 use App\Services\BidPreauthService;
+use App\Services\BidPreauthSettlementService;
 use App\Services\BlacklistService;
 use App\Services\BulkSmsService;
 use App\Services\EmdAuctionService;
@@ -447,8 +447,7 @@ class UserAuctionController extends Controller
             'udf5' => '',
         ];
         $paymentData['hash'] = $this->payuService->generateHash($paymentData);
-        $paymentData['pre_authorize'] = '1';
-        $paymentData['enforced_payment'] = 'creditcard';
+        $paymentData = $this->payuService->applyBidPreauthHostedFields($paymentData);
 
         return view('payments.redirect', ['paymentUrl' => $this->payuService->paymentUrl(), 'paymentData' => $paymentData]);
     }

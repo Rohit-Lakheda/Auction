@@ -18,6 +18,19 @@ class PayuServiceCommandsTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_apply_bid_preauth_hosted_fields_sets_enforce_paymethod_not_legacy_typo(): void
+    {
+        $service = new PayuService;
+        $withHash = ['key' => 'k', 'txnid' => 't', 'amount' => '1.00', 'hash' => 'computed'];
+        $out = $service->applyBidPreauthHostedFields($withHash);
+
+        $this->assertSame('1', $out['pre_authorize']);
+        $this->assertSame('creditcard', $out['enforce_paymethod']);
+        $this->assertSame('cc', $out['pg']);
+        $this->assertSame('CC', $out['bankcode']);
+        $this->assertArrayNotHasKey('enforced_payment', $out);
+    }
+
     public function test_hash_for_command_matches_payu_formula(): void
     {
         putenv('PAYU_MERCHANT_KEY=key1');

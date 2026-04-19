@@ -38,6 +38,26 @@ class PayuService
         return strtolower(hash('sha512', $hashString));
     }
 
+    /**
+     * Bid pre-authorization on hosted checkout: append fields after generateHash().
+     *
+     * PayU expects enforce_paymethod (not enforced_payment) to restrict rails.
+     * Net banking / UPI / wallets settle immediately and do not behave like card auth holds.
+     *
+     * @see https://docs.payu.in/v2/docs/enforce-pay-method-or-remove-category
+     * @see https://docs.payu.in/docs/payu-hosted-integration-pre-authorize-payments
+     */
+    public function applyBidPreauthHostedFields(array $paymentData): array
+    {
+        $paymentData['pre_authorize'] = '1';
+        $paymentData['enforce_paymethod'] = 'creditcard';
+        $paymentData['pg'] = 'cc';
+        $paymentData['bankcode'] = 'CC';
+        $paymentData['drop_category'] = 'NB|DC|NEFTRTGS|EMI|CASH|BNPL|SODEXO';
+
+        return $paymentData;
+    }
+
     public function verifyHash(array $response): bool
     {
         $salt = (string) env('PAYU_SALT', '');
