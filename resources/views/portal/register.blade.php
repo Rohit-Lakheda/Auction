@@ -6,6 +6,7 @@
     <title>Auction Registration</title>
     <link href="https://fonts.googleapis.com/css2?family=Varela+Round&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         *{margin:0;padding:0;box-sizing:border-box} body{font-family:'Varela Round',sans-serif;background-color:#f8f9fa;color:#2c3e50}
         input,select,textarea,button{font-family:'Varela Round',sans-serif !important}
@@ -19,6 +20,37 @@
 </head>
 <body>
 <div class="top-header"><div class="top-header-content"><img src="{{ asset('images/nixi_logo1.jpg') }}" alt="NIXI Logo" class="top-header-logo"><span class="top-header-title">Auction Portal</span></div></div>
+
+<!-- Age Restriction Modal -->
+<div class="modal fade" id="ageRestrictionModal" tabindex="-1" aria-labelledby="ageRestrictionModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0">
+            <div class="modal-header bg-danger text-white border-0">
+                <h5 class="modal-title" id="ageRestrictionModalLabel">
+                    <i class="fas fa-exclamation-circle" style="margin-right: 8px;"></i>Age Restriction
+                </h5>
+            </div>
+            <div class="modal-body text-center py-5">
+                <div style="font-size: 48px; margin-bottom: 20px; color: #dc3545;">
+                    <i class="fas fa-ban"></i>
+                </div>
+                <h4 style="margin-bottom: 15px; color: #2c3e50;">Registration Not Allowed</h4>
+                <p style="font-size: 16px; color: #555; margin-bottom: 25px;">
+                    You must be at least <strong>18 years old</strong> to register on this platform. Your current age is <strong><span id="ageDisplayValue">--</span> years</strong>.
+                </p>
+                <p style="font-size: 14px; color: #888; margin-bottom: 0;">
+                    For more information, please contact our support team.
+                </p>
+            </div>
+            <div class="modal-footer border-0 d-flex justify-content-center pb-4">
+                <button type="button" class="btn btn-danger px-5" onclick="redirectToHome()" style="font-weight: 500;">
+                    Return to Home
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="container"><div class="row justify-content-center"><div class="col-lg-10 col-xl-9"><div class="card shadow">
 <div class="card-header"><h4 class="mb-0">Registration</h4></div>
 <div class="card-body">
@@ -35,7 +67,7 @@
         <div class="mb-4">
             <label class="form-label fw-bold">Registration Type <span style="color:#4169E1">*</span></label>
             <div class="d-flex gap-4">
-                <div class="form-check"><input class="form-check-input" type="radio" name="registration_type" id="registration_type_entity" value="entity" {{ (old('registration_type','entity')==='entity')?'checked':'' }} required><label class="form-check-label" for="registration_type_entity">Entity</label></div>
+                <div class="form-check" hidden><input class="form-check-input" type="radio" name="registration_type" id="registration_type_entity" value="entity" {{ (old('registration_type','entity')==='entity')?'checked':'' }} required><label class="form-check-label" for="registration_type_entity">Entity</label></div>
                 <div class="form-check"><input class="form-check-input" type="radio" name="registration_type" id="registration_type_individual" value="individual" {{ (old('registration_type')==='individual')?'checked':'' }} required><label class="form-check-label" for="registration_type_individual">Individual</label></div>
             </div>
             <small class="form-text text-muted">Select whether you are registering as an individual or an entity</small>
@@ -78,7 +110,7 @@ document.getElementById('mobile').addEventListener('input',e=>e.target.value=e.t
 document.getElementById('email_otp').addEventListener('input',e=>e.target.value=e.target.value.replace(/\D/g,''));
 document.getElementById('mobile_otp').addEventListener('input',e=>e.target.value=e.target.value.replace(/\D/g,''));
 function verifyPan(){const panNo=document.getElementById('pancardno').value;const fullName=document.getElementById('fullname').value;const dob=document.getElementById('dateofbirth').value;if(!fullName||!dob||!panNo){alert('Please fill name, date and PAN first.');return;}const btn=document.getElementById('verifyPanBtn');const statusDiv=document.getElementById('panVerificationStatus');btn.disabled=true;btn.textContent='Verifying...';statusDiv.style.display='block';statusDiv.innerHTML='<small class="text-info">Verifying PAN... Please wait...</small>';postJson('{{ route('register.pan.verify') }}',{pancardno:panNo,fullname:fullName,dateofbirth:dob}).then(data=>{if(data.success&&data.request_id){statusDiv.innerHTML='<small class="text-info">Verification initiated. Checking status...</small>';checkPanStatus(data.request_id,panNo,btn,statusDiv);}else{statusDiv.innerHTML='<small style="color:#dc3545;"><strong>✗ '+(data.message||'PAN verification failed')+'</strong></small>';btn.disabled=false;btn.textContent='Verify PAN';}});}
-function checkPanStatus(requestId,panNo,btn,statusDiv){let pollCount=0;const poll=()=>{pollCount++;if(pollCount>30){statusDiv.innerHTML='<small style="color:#dc3545;"><strong>✗ Verification timeout. Please try again.</strong></small>';btn.disabled=false;btn.textContent='Verify PAN';return;}postJson('{{ route('register.pan.status') }}',{request_id:requestId,pancardno:panNo}).then(data=>{if(data.status==='completed'){if(data.verified===true){panVerified=true;['pancardno','fullname','dateofbirth'].forEach(id=>{const el=document.getElementById(id);el.readOnly=true;el.style.backgroundColor='#d4edda';el.style.borderColor='#28a745';});btn.disabled=true;btn.textContent='Verified';btn.classList.remove('btn-outline-primary');btn.classList.add('btn-success');statusDiv.innerHTML='<small class="text-success"><strong>✓ PAN verified successfully!</strong></small>';checkAllValidations();}else{statusDiv.innerHTML='<small style="color:#dc3545;"><strong>✗ '+(data.message||'PAN verification failed')+'</strong></small>';btn.disabled=false;btn.textContent='Verify PAN';}}else if(data.status==='failed'){statusDiv.innerHTML='<small style="color:#dc3545;"><strong>✗ '+(data.message||'PAN verification failed')+'</strong></small>';btn.disabled=false;btn.textContent='Verify PAN';}else{statusDiv.innerHTML='<small class="text-info">'+(data.message||'Verification in progress...')+'</small>';setTimeout(poll,2000);}}).catch(()=>setTimeout(poll,2000));};setTimeout(poll,2000);}
+function checkPanStatus(requestId,panNo,btn,statusDiv){let pollCount=0;const poll=()=>{pollCount++;if(pollCount>30){statusDiv.innerHTML='<small style="color:#dc3545;"><strong>✗ Verification timeout. Please try again.</strong></small>';btn.disabled=false;btn.textContent='Verify PAN';return;}postJson('{{ route('register.pan.status') }}',{request_id:requestId,pancardno:panNo}).then(data=>{if(data.status==='completed'){if(data.verified===true){if(data.age_restricted===true){document.getElementById('ageDisplayValue').textContent=data.age;const ageModal=new bootstrap.Modal(document.getElementById('ageRestrictionModal'));ageModal.show();statusDiv.innerHTML='<small style="color:#dc3545;"><strong>✗ Age restriction: Must be 18 years or older</strong></small>';btn.disabled=false;btn.textContent='Verify PAN';return;}panVerified=true;['pancardno','fullname','dateofbirth'].forEach(id=>{const el=document.getElementById(id);el.readOnly=true;el.style.backgroundColor='#d4edda';el.style.borderColor='#28a745';});btn.disabled=true;btn.textContent='Verified';btn.classList.remove('btn-outline-primary');btn.classList.add('btn-success');statusDiv.innerHTML='<small class="text-success"><strong>✓ PAN verified successfully!</strong></small>';checkAllValidations();}else{statusDiv.innerHTML='<small style="color:#dc3545;"><strong>✗ '+(data.message||'PAN verification failed')+'</strong></small>';btn.disabled=false;btn.textContent='Verify PAN';}}else if(data.status==='failed'){statusDiv.innerHTML='<small style="color:#dc3545;"><strong>✗ '+(data.message||'PAN verification failed')+'</strong></small>';btn.disabled=false;btn.textContent='Verify PAN';}else{statusDiv.innerHTML='<small class="text-info">'+(data.message||'Verification in progress...')+'</small>';setTimeout(poll,2000);}}).catch(()=>setTimeout(poll,2000));};setTimeout(poll,2000);}
 function getEmailOtp(){const email=document.getElementById('email').value;if(!email){alert('Please enter your email address first.');return;}const btn=document.getElementById('getEmailOtpBtn');btn.disabled=true;btn.textContent='Sending...';postJson('{{ route('register.otp.email.send') }}',{email}).then(data=>{if(data.success){document.getElementById('emailOtpSection').style.display='block';document.getElementById('emailOtpStatus').textContent='OTP sent to your email. Please check and enter it.'+(data.otp?' (Dev Mode OTP: '+data.otp+')':'');btn.disabled=false;btn.textContent='Resend OTP';}else{alert(data.message||'Failed to send OTP.');btn.disabled=false;btn.textContent='Get OTP';}});}
 function verifyEmailOtp(){const email=document.getElementById('email').value;const otp=document.getElementById('email_otp').value;postJson('{{ route('register.otp.email.verify') }}',{email,otp}).then(data=>{if(data.success){emailVerified=true;const emailInput=document.getElementById('email');emailInput.readOnly=true;emailInput.style.backgroundColor='#d4edda';emailInput.style.borderColor='#28a745';document.getElementById('getEmailOtpBtn').disabled=true;document.getElementById('getEmailOtpBtn').textContent='Verified';document.getElementById('getEmailOtpBtn').classList.remove('btn-outline-primary');document.getElementById('getEmailOtpBtn').classList.add('btn-success');document.getElementById('emailOtpSection').style.display='none';document.getElementById('emailVerificationStatus').style.display='block';document.getElementById('emailVerificationStatus').innerHTML='<small class="text-success"><strong>✓ Email verified successfully!</strong></small>';checkAllValidations();}else{document.getElementById('emailOtpStatus').textContent=data.message||'Invalid OTP.';}});}
 function getMobileOtp(){const mobile=document.getElementById('mobile').value;if(!mobile||mobile.length!==10){alert('Please enter a valid 10-digit mobile number.');return;}const btn=document.getElementById('getMobileOtpBtn');btn.disabled=true;btn.textContent='Sending...';postJson('{{ route('register.otp.mobile.send') }}',{mobile}).then(data=>{if(data.success){document.getElementById('mobileOtpSection').style.display='block';document.getElementById('mobileOtpStatus').textContent='OTP sent to your mobile. Please check and enter it.'+(data.otp?' (Dev: '+data.otp+')':'');document.getElementById('mobileOtpStatus').className='form-text text-success';btn.disabled=false;btn.textContent='Resend OTP';}else{alert(data.message||'Failed to send OTP.');btn.disabled=false;btn.textContent='Get OTP';}});}
@@ -87,6 +119,7 @@ function checkAllValidations(){const panValid=panVerified;const nameValid=docume
 document.getElementById('dateofbirth').addEventListener('change',checkAllValidations);document.getElementById('declaration').addEventListener('change',checkAllValidations);
 document.getElementById('registrationForm').addEventListener('submit',function(e){if(!panVerified||!emailVerified||!mobileVerified||!document.getElementById('declaration').checked){e.preventDefault();alert('Please complete all required fields, verifications, and accept the declaration before submitting.');checkAllValidations();}});
 checkAllValidations();
+function redirectToHome(){window.location.href='{{ route('home') }}';}
 </script>
 </body>
 </html>

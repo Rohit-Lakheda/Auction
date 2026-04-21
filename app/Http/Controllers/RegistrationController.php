@@ -181,6 +181,7 @@ class RegistrationController extends Controller
             return response()->json(['success' => false, 'message' => 'Failed to initiate PAN verification.']);
         }
         $request->session()->put('pan_verification_request_id_' . md5($pan), $requestId);
+        $request->session()->put('pan_verification_dob_' . md5($pan), $dobNormalized);
 
         return response()->json(['success' => true, 'request_id' => $requestId, 'message' => 'Verification initiated']);
     }
@@ -225,6 +226,21 @@ class RegistrationController extends Controller
 
         if (! $verified) {
             return response()->json(['status' => 'completed', 'verified' => false, 'message' => 'PAN is invalid or details do not match.']);
+        }
+
+        // Age Restriction Check
+        $dob = $request->session()->get('pan_verification_dob_' . md5($pan));
+        if ($dob) {
+            $age = $this->calculateAge($dob);
+            if ($age < 18) {
+                return response()->json([
+                    'status' => 'completed',
+                    'verified' => false,
+                    'message' => 'You must be at least 18 years old to register.',
+                    'age_restricted' => true,
+                    'age' => $age,
+                ]);
+            }
         }
 
         $request->session()->put('pan_verified_' . md5($pan), true);
@@ -381,6 +397,17 @@ class RegistrationController extends Controller
             Mail::purge('smtp');
         } catch (\Throwable) {
             // Keep default mail config if dynamic DB settings cannot be loaded.
+        }
+    }
+
+    private function calculateAge(string $dob): int
+    {
+        try {
+            $birthDate = \Carbon\Carbon::parse($dob);
+            $today = \Carbon\Carbon::now();
+            return $today->diffInYears($birthDate);
+        } catch (\Throwable) {
+            return 0;
         }
     }
 }
