@@ -403,10 +403,38 @@ class RegistrationController extends Controller
     private function calculateAge(string $dob): int
     {
         try {
-            $birthDate = \Carbon\Carbon::parse($dob);
+            $dob = trim($dob);
+            
+            // Try parsing with strict format first
+            $birthDate = \Carbon\Carbon::createFromFormat('Y-m-d', $dob);
+            if (!$birthDate) {
+                // Fall back to flexible parsing
+                $birthDate = \Carbon\Carbon::parse($dob);
+            }
+            
+            if (!$birthDate || !$birthDate->isValid()) {
+                return 0;
+            }
+            
             $today = \Carbon\Carbon::now();
-            return $today->diffInYears($birthDate);
-        } catch (\Throwable) {
+            
+            // Calculate age manually
+            $age = (int)$today->format('Y') - (int)$birthDate->format('Y');
+            
+            // Check if birthday has occurred this year
+            $todayMonth = (int)$today->format('m');
+            $todayDay = (int)$today->format('d');
+            $birthMonth = (int)$birthDate->format('m');
+            $birthDay = (int)$birthDate->format('d');
+            
+            if ($todayMonth < $birthMonth || ($todayMonth === $birthMonth && $todayDay < $birthDay)) {
+                $age--;
+            }
+            
+            
+            
+            return max(0, $age);
+        } catch (\Throwable $e) {
             return 0;
         }
     }
