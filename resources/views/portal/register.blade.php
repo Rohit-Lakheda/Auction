@@ -67,10 +67,10 @@
         <div class="mb-4">
             <label class="form-label fw-bold">Registration Type <span style="color:#4169E1">*</span></label>
             <div class="d-flex gap-4">
-                <div class="form-check" hidden><input class="form-check-input" type="radio" name="registration_type" id="registration_type_entity" value="entity" {{ (old('registration_type','entity')==='entity')?'checked':'' }} required><label class="form-check-label" for="registration_type_entity">Entity</label></div>
-                <div class="form-check"><input class="form-check-input" type="radio" name="registration_type" id="registration_type_individual" value="individual" {{ (old('registration_type')==='individual')?'checked':'' }} required><label class="form-check-label" for="registration_type_individual">Individual</label></div>
+                <div class="form-check" hidden><input class="form-check-input" type="radio" name="registration_type" id="registration_type_entity" value="entity" {{ (old('registration_type','individual')==='entity')?'checked':'' }} required><label class="form-check-label" for="registration_type_entity">Entity</label></div>
+                <div class="form-check"><input class="form-check-input" type="radio" name="registration_type" id="registration_type_individual" value="individual" {{ (old('registration_type','individual')==='individual')?'checked':'' }} required><label class="form-check-label" for="registration_type_individual">Individual</label></div>
             </div>
-            <small class="form-text text-muted">Select whether you are registering as an individual or an entity</small>
+            <small class="form-text text-muted" hidden>Select whether you are registering as an individual or an entity</small>
         </div>
         <div class="mb-4" style="border-top:2px solid #e9ecef;padding-top:25px;">
             <div class="row mb-3">
